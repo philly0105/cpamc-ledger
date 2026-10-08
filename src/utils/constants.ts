@@ -32,6 +32,7 @@ export const MAX_AUTH_FILE_SIZE = 10 * 1024 * 1024;
 export const STORAGE_KEY_AUTH = 'cli-proxy-auth';
 export const STORAGE_KEY_THEME = 'cli-proxy-theme';
 export const STORAGE_KEY_LANGUAGE = 'cli-proxy-language';
+export const STORAGE_KEY_SIDEBAR_COLLAPSED = 'cli-proxy-sidebar-collapsed';
 
 // 语言配置
 export const LANGUAGE_ORDER = defineLanguageOrder(['zh-CN', 'zh-TW', 'en', 'ru', 'vi'] as const);
@@ -46,3 +47,5 @@ export const SUPPORTED_LANGUAGES = LANGUAGE_ORDER;
 
 // 通知持续时间
 export const NOTIFICATION_DURATION_MS = 3000;
+// 错误需要读完原因，停留更久（鼠标悬停/聚焦时计时暂停）
+export const NOTIFICATION_ERROR_DURATION_MS = 8000;

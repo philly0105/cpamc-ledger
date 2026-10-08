@@ -5,7 +5,7 @@
 // 颜色
 $primary-color: #8b8680;
 $success-color: #10b981;
-$warning-color: #c65746;
+$warning-color: #d97706;
 $error-color: #c65746;
 
 // 灰阶
@@ -51,3 +51,6 @@ $font-family:
 $font-mono:
   ui-monospace, 'SF Mono', 'Cascadia Mono', 'JetBrains Mono', 'Fira Code', Menlo, Consolas,
   'Liberation Mono', monospace;
+
+// 圆角 / 字号 / 焦点环的 CSS 变量在 themes.scss 的 :root 中定义（--radius-*, --fs-*, --focus-ring）
+$radius-xl: 16px;

@@ -31,6 +31,8 @@ interface SelectProps {
   ariaInvalid?: AriaAttributes['aria-invalid'];
   fullWidth?: boolean;
   size?: 'sm' | 'md';
+  /** `quiet`：工具栏用的无边框 36px 触发器（Quota 页语汇）。 */
+  variant?: 'default' | 'quiet';
   id?: string;
 }
 
@@ -91,6 +93,7 @@ export function Select({
   ariaInvalid,
   fullWidth = true,
   size = 'md',
+  variant = 'default',
   id,
 }: SelectProps) {
   const generatedId = useId();
@@ -319,7 +322,13 @@ export function Select({
           id={selectId}
           ref={triggerRef}
           type="button"
-          className={`${styles.trigger} ${size === 'sm' ? styles.triggerSm : ''}`.trim()}
+          className={[
+            styles.trigger,
+            size === 'sm' ? styles.triggerSm : '',
+            variant === 'quiet' ? styles.triggerQuiet : '',
+          ]
+            .filter(Boolean)
+            .join(' ')}
           onClick={disabled ? undefined : () => setOpen((prev) => !prev)}
           onKeyDown={handleKeyDown}
           aria-haspopup="listbox"

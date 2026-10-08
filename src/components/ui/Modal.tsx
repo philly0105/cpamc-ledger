@@ -1,16 +1,8 @@
-import {
-  useCallback,
-  useEffect,
-  useId,
-  useRef,
-  useState,
-  type PropsWithChildren,
-  type ReactNode,
-} from 'react';
+import { useId, useRef, type PropsWithChildren, type ReactNode, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { IconX } from './icons';
-import { FOCUSABLE_SELECTOR, lockScroll, unlockScroll } from './scrollLock';
+import { useDialog } from './useDialog';
 
 interface ModalProps {
   open: boolean;
@@ -20,9 +12,14 @@ interface ModalProps {
   width?: number | string;
   className?: string;
   closeDisabled?: boolean;
+  /** 打开时聚焦的元素（如危险确认框聚焦「取消」）。 */
+  initialFocusRef?: RefObject<HTMLElement | null>;
+  /** 点击遮罩关闭，默认关闭（表单类对话框不希望误触）。 */
+  closeOnOverlayClick?: boolean;
 }
 
-const CLOSE_ANIMATION_DURATION = 350;
+// 与 components.scss 的 modal-fade-out 时长一致
+const CLOSE_ANIMATION_DURATION = 160;
 
 export function Modal({
   open,
@@ -32,148 +29,24 @@ export function Modal({
   width = 520,
   className,
   closeDisabled = false,
+  initialFocusRef,
+  closeOnOverlayClick = false,
   children,
 }: PropsWithChildren<ModalProps>) {
   const { t } = useTranslation();
   const titleId = useId();
-  const [isVisible, setIsVisible] = useState(false);
-  const [isClosing, setIsClosing] = useState(false);
-  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const modalRef = useRef<HTMLDivElement | null>(null);
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
-  const previouslyFocusedRef = useRef<HTMLElement | null>(null);
 
-  const getFocusableElements = useCallback(() => {
-    if (!modalRef.current) return [] as HTMLElement[];
-    return Array.from(modalRef.current.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).filter(
-      (element) => !element.hasAttribute('disabled') && element.tabIndex !== -1
-    );
-  }, []);
-
-  const startClose = useCallback(
-    (notifyParent: boolean) => {
-      if (closeTimerRef.current !== null) return;
-      setIsClosing(true);
-      closeTimerRef.current = window.setTimeout(() => {
-        setIsVisible(false);
-        setIsClosing(false);
-        closeTimerRef.current = null;
-        if (notifyParent) {
-          onClose();
-        }
-      }, CLOSE_ANIMATION_DURATION);
-    },
-    [onClose]
-  );
-
-  useEffect(() => {
-    let cancelled = false;
-
-    if (open) {
-      if (closeTimerRef.current !== null) {
-        window.clearTimeout(closeTimerRef.current);
-        closeTimerRef.current = null;
-      }
-      queueMicrotask(() => {
-        if (cancelled) return;
-        setIsVisible(true);
-        setIsClosing(false);
-      });
-    } else if (isVisible) {
-      queueMicrotask(() => {
-        if (cancelled) return;
-        startClose(false);
-      });
-    }
-
-    return () => {
-      cancelled = true;
-    };
-  }, [open, isVisible, startClose]);
-
-  const handleClose = useCallback(() => {
-    startClose(true);
-  }, [startClose]);
-
-  useEffect(() => {
-    return () => {
-      if (closeTimerRef.current !== null) {
-        window.clearTimeout(closeTimerRef.current);
-      }
-    };
-  }, []);
-
-  const shouldLockScroll = open || isVisible;
-
-  useEffect(() => {
-    if (!shouldLockScroll) return;
-    lockScroll();
-    return () => unlockScroll();
-  }, [shouldLockScroll]);
-
-  useEffect(() => {
-    if (!open) return;
-
-    previouslyFocusedRef.current =
-      document.activeElement instanceof HTMLElement ? document.activeElement : null;
-
-    const focusTimer = window.setTimeout(() => {
-      const firstFocusable = getFocusableElements()[0];
-      (firstFocusable ?? closeButtonRef.current ?? modalRef.current)?.focus();
-    }, 0);
-
-    return () => {
-      window.clearTimeout(focusTimer);
-    };
-  }, [getFocusableElements, open]);
-
-  useEffect(() => {
-    if (open || isVisible) return;
-    previouslyFocusedRef.current?.focus();
-    previouslyFocusedRef.current = null;
-  }, [isVisible, open]);
-
-  useEffect(() => {
-    if (!open) return;
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        if (closeDisabled) return;
-        event.preventDefault();
-        handleClose();
-        return;
-      }
-
-      if (event.key !== 'Tab') return;
-
-      const focusableElements = getFocusableElements();
-      if (focusableElements.length === 0) {
-        event.preventDefault();
-        modalRef.current?.focus();
-        return;
-      }
-
-      const firstElement = focusableElements[0];
-      const lastElement = focusableElements[focusableElements.length - 1];
-      const activeElement = document.activeElement as HTMLElement | null;
-
-      if (event.shiftKey) {
-        if (activeElement === firstElement || activeElement === modalRef.current) {
-          event.preventDefault();
-          lastElement.focus();
-        }
-        return;
-      }
-
-      if (activeElement === lastElement) {
-        event.preventDefault();
-        firstElement.focus();
-      }
-    };
-
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [closeDisabled, getFocusableElements, handleClose, open]);
+  const { isVisible, isClosing, handleClose } = useDialog({
+    open,
+    onClose,
+    containerRef: modalRef,
+    initialFocusRef,
+    fallbackFocusRef: closeButtonRef,
+    closeDisabled,
+    closeDuration: CLOSE_ANIMATION_DURATION,
+  });
 
   if (!open && !isVisible) return null;
 
@@ -181,7 +54,13 @@ export function Modal({
   const modalClass = `modal ${isClosing ? 'modal-closing' : 'modal-entering'}${className ? ` ${className}` : ''}`;
 
   const modalContent = (
-    <div className={overlayClass}>
+    <div
+      className={overlayClass}
+      onMouseDown={(event) => {
+        if (!closeOnOverlayClick || closeDisabled) return;
+        if (event.target === event.currentTarget) void handleClose();
+      }}
+    >
       <div
         ref={modalRef}
         className={modalClass}
@@ -195,16 +74,16 @@ export function Modal({
           ref={closeButtonRef}
           type="button"
           className="modal-close-floating"
-          onClick={closeDisabled ? undefined : handleClose}
+          onClick={closeDisabled ? undefined : () => void handleClose()}
           aria-label={t('common.close')}
           disabled={closeDisabled}
         >
           <IconX size={20} />
         </button>
         <div className="modal-header">
-          <div className="modal-title" id={title ? titleId : undefined}>
+          <h2 className="modal-title" id={title ? titleId : undefined}>
             {title}
-          </div>
+          </h2>
         </div>
         <div className="modal-body">{children}</div>
         {footer && <div className="modal-footer">{footer}</div>}

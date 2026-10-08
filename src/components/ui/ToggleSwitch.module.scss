@@ -44,6 +44,11 @@
   transition: transform $transition-fast;
 }
 
+.root input:focus-visible + .track {
+  outline: var(--focus-ring);
+  outline-offset: 2px;
+}
+
 .root input:checked + .track {
   background: var(--primary-color);
 }

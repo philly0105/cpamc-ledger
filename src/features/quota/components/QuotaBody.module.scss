@@ -72,7 +72,7 @@
 }
 
 .quotaResetRelativeSoon {
-  color: var(--warning-text);
+  color: var(--danger-text);
   font-weight: 600;
 }
 
@@ -253,8 +253,8 @@
 }
 
 .codexResetCreditRowSoon {
-  border-color: var(--warning-border);
-  background-color: var(--warning-bg);
+  border-color: var(--danger-border);
+  background-color: var(--danger-bg);
 }
 
 .codexResetCreditLabel {
@@ -274,9 +274,9 @@
 .codexResetCreditsError {
   font-size: 12px;
   line-height: 1.4;
-  color: var(--warning-text);
-  background-color: var(--warning-bg);
-  border: 1px solid var(--warning-border);
+  color: var(--danger-text);
+  background-color: var(--danger-bg);
+  border: 1px solid var(--danger-border);
   border-radius: $radius-sm;
   padding: $spacing-xs $spacing-sm;
 }

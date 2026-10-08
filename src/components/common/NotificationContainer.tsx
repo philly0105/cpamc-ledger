@@ -18,7 +18,7 @@ const notificationIcons = {
   success: IconCheckCircle2,
   info: IconInfo,
   warning: IconAlertTriangle,
-  error: IconInfo,
+  error: IconAlertTriangle,
 };
 
 function NotificationCard({

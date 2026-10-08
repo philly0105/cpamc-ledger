@@ -20,35 +20,31 @@ export function Input({
   rightElement,
   className = '',
   id,
+  'aria-describedby': ariaDescribedBy,
+  'aria-invalid': ariaInvalid,
   ...rest
 }: InputProps) {
   const generatedId = useId();
   const inputId = id ?? generatedId;
   const hintId = hint ? `${inputId}-hint` : undefined;
   const errorId = error ? `${inputId}-error` : undefined;
-  const describedBy =
-    [rest['aria-describedby'], errorId, hintId].filter(Boolean).join(' ') || undefined;
+  // 调用方自带的 describedby 与 hint/error id 合并，而不是互相覆盖
+  const describedBy = [ariaDescribedBy, errorId, hintId].filter(Boolean).join(' ') || undefined;
 
   return (
     <div className="form-group">
       {topExtra}
       {label && <label htmlFor={inputId}>{label}</label>}
       {labelExtra}
-      <div style={{ position: 'relative' }}>
+      <div className="input-wrap">
         <input
+          {...rest}
           id={inputId}
           className={`input ${className}`.trim()}
-          aria-invalid={Boolean(error) || rest['aria-invalid']}
+          aria-invalid={Boolean(error) || ariaInvalid}
           aria-describedby={describedBy}
-          {...rest}
         />
-        {rightElement && (
-          <div
-            style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)' }}
-          >
-            {rightElement}
-          </div>
-        )}
+        {rightElement && <div className="input-right">{rightElement}</div>}
       </div>
       {hint && (
         <div id={hintId} className="hint">
@@ -56,7 +52,7 @@ export function Input({
         </div>
       )}
       {error && (
-        <div id={errorId} className="error-box">
+        <div id={errorId} className="error-box" role="alert">
           {error}
         </div>
       )}

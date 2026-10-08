@@ -330,7 +330,7 @@
   max-height: 12vh;
   overflow: auto;
   padding: 6px 12px;
-  background: var(--warning-bg);
+  background: var(--danger-bg);
   &:empty {
     display: none;
   }
@@ -419,7 +419,7 @@
   }
 }
 .rowWarn {
-  border-left-color: var(--warning-color);
+  border-left-color: var(--danger-color);
 }
 .rowError {
   border-left-color: var(--error-color);
@@ -476,8 +476,8 @@
 }
 .statusWarn,
 .levelWarn {
-  color: var(--warning-text);
-  background: var(--warning-bg);
+  color: var(--danger-text);
+  background: var(--danger-bg);
 }
 .statusError,
 .levelError {

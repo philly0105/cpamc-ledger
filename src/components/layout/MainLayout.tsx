@@ -10,6 +10,7 @@ import {
   useState,
   type MouseEvent as ReactMouseEvent,
   type SyntheticEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
 } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
@@ -48,7 +49,11 @@ import {
 } from '@/features/plugins/pluginResources';
 import { APIKEY_FUN_DISPLAY_NAME, hasApiKeyFunConfig } from '@/features/providers/sponsor';
 import { triggerHeaderRefresh } from '@/hooks/useHeaderRefresh';
-import { LANGUAGE_LABEL_KEYS, LANGUAGE_ORDER } from '@/utils/constants';
+import {
+  LANGUAGE_LABEL_KEYS,
+  LANGUAGE_ORDER,
+  STORAGE_KEY_SIDEBAR_COLLAPSED,
+} from '@/utils/constants';
 import { isSupportedLanguage } from '@/utils/language';
 import { getSidebarShortcutLabel, isSidebarToggleShortcut } from '@/utils/sidebarShortcut';
 import type { Theme } from '@/types';
@@ -326,7 +331,13 @@ export function MainLayout() {
   const setLanguage = useLanguageStore((state) => state.setLanguage);
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
+    try {
+      return window.localStorage.getItem(STORAGE_KEY_SIDEBAR_COLLAPSED) === '1';
+    } catch {
+      return false;
+    }
+  });
   const [authFilesCount, setAuthFilesCount] = useState<number | null>(null);
   const [railTooltip, setRailTooltip] = useState<{
     targetID: string;
@@ -444,10 +455,36 @@ export function MainLayout() {
     };
   }, []);
 
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(STORAGE_KEY_SIDEBAR_COLLAPSED, sidebarCollapsed ? '1' : '0');
+    } catch {
+      // 隐私模式等场景下 localStorage 不可用，忽略
+    }
+  }, [sidebarCollapsed]);
+
   const closeLanguageMenu = useCallback(() => setLanguageMenuOpen(false), []);
   const closeThemeMenu = useCallback(() => setThemeMenuOpen(false), []);
   useMenuDismiss(languageMenuOpen, languageMenuRef, closeLanguageMenu);
   useMenuDismiss(themeMenuOpen, themeMenuRef, closeThemeMenu);
+
+  // 弹出菜单内 ↑↓/Home/End 轮转焦点；Escape 由 useMenuDismiss 处理
+  const handleMenuKeyDown = useCallback((event: ReactKeyboardEvent<HTMLDivElement>) => {
+    const keys = ['ArrowDown', 'ArrowUp', 'Home', 'End'];
+    if (!keys.includes(event.key)) return;
+    const items = Array.from(
+      event.currentTarget.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')
+    );
+    if (items.length === 0) return;
+    const index = items.indexOf(document.activeElement as HTMLButtonElement);
+    let next = index;
+    if (event.key === 'ArrowDown') next = (index + 1) % items.length;
+    if (event.key === 'ArrowUp') next = (index - 1 + items.length) % items.length;
+    if (event.key === 'Home') next = 0;
+    if (event.key === 'End') next = items.length - 1;
+    event.preventDefault();
+    items[next]?.focus();
+  }, []);
 
   const toggleLanguageMenu = useCallback(() => {
     setLanguageMenuOpen((prev) => !prev);
@@ -1021,6 +1058,7 @@ export function MainLayout() {
             size="sm"
             onClick={handleRefreshAll}
             title={t('header.refresh_all')}
+            aria-label={t('header.refresh_all')}
           >
             {headerIcons.refresh}
           </Button>
@@ -1038,7 +1076,8 @@ export function MainLayout() {
             </Button>
             {languageMenuOpen && (
               <div
-                className="notification entering language-menu-popover"
+                className="language-menu-popover"
+                onKeyDown={handleMenuKeyDown}
                 role="menu"
                 aria-label={t('language.switch')}
               >
@@ -1078,7 +1117,8 @@ export function MainLayout() {
             </Button>
             {themeMenuOpen && (
               <div
-                className="notification entering theme-menu-popover"
+                className="theme-menu-popover"
+                onKeyDown={handleMenuKeyDown}
                 role="menu"
                 aria-label={t('theme.switch')}
               >
@@ -1131,7 +1171,13 @@ export function MainLayout() {
               </div>
             )}
           </div>
-          <Button variant="ghost" size="sm" onClick={logout} title={t('header.logout')}>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={logout}
+            title={t('header.logout')}
+            aria-label={t('header.logout')}
+          >
             {headerIcons.logout}
           </Button>
         </div>

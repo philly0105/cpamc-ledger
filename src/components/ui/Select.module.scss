@@ -56,6 +56,37 @@
   box-shadow: none;
 }
 
+/* 工具栏安静触发器：透明边、悬停着色、展开/聚焦时显环 */
+.triggerQuiet {
+  height: 36px;
+  padding: 0 10px 0 12px;
+  border-color: transparent;
+  border-radius: 10px;
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-secondary);
+
+  &:hover {
+    border-color: transparent;
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+  }
+
+  &:focus-visible,
+  &[aria-expanded='true'] {
+    outline: var(--focus-ring);
+    outline-offset: 2px;
+    box-shadow: none;
+    border-color: transparent;
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+  }
+
+  @include mobile {
+    height: 40px;
+  }
+}
+
 .triggerText {
   overflow: hidden;
   text-overflow: ellipsis;

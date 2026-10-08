@@ -16,7 +16,7 @@
 
   --text-primary: #2d2a26;
   --text-secondary: #6d6760;
-  --text-tertiary: #a29c95;
+  --text-tertiary: #6f6962; // AA on paper/card (was #a29c95, 2.3:1)
   --text-quaternary: #c0bab3;
   --text-muted: var(--text-tertiary);
 
@@ -32,14 +32,21 @@
 
   --success-color: #10b981;
   --quota-medium-color: #e0aa14;
-  --warning-color: #c65746; // 错误/警告色
   --error-color: #c65746;
   --danger-color: var(--error-color);
   --info-color: var(--primary-color);
 
-  --warning-bg: rgba(198, 87, 70, 0.12);
-  --warning-border: rgba(198, 87, 70, 0.35);
-  --warning-text: var(--warning-color);
+  // 语义色文本/底/边：text 变体保证 AA 对比度；color 变体只用于填充与进度条
+  --success-text: #047857;
+  --success-bg: color-mix(in srgb, var(--success-color) 10%, transparent);
+  --success-border: color-mix(in srgb, var(--success-color) 35%, transparent);
+  --warning-color: var(--amber-color);
+  --warning-text: var(--amber-text);
+  --warning-bg: var(--amber-10);
+  --warning-border: var(--amber-30);
+  --danger-text: #9c3f31;
+  --danger-bg: rgba(198, 87, 70, 0.12);
+  --danger-border: rgba(198, 87, 70, 0.35);
 
   --success-badge-bg: #d1fae5;
   --success-badge-text: #065f46;
@@ -55,7 +62,18 @@
   --shadow: 0 1px 2px 0 rgb(0 0 0 / 0.08);
   --shadow-lg: 0 10px 18px -3px rgb(0 0 0 / 0.1);
 
+  --radius-sm: 4px;
   --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --focus-ring: 2px solid var(--primary-color);
+
+  // 字号阶梯（Quota 页为基准）
+  --fs-meta: 11.5px;
+  --fs-body: 12.5px;
+  --fs-base: 13px;
+  --fs-title: 14px;
+  --fs-stat: 26px;
 
   // Workbench tokens (Home parity)
   --primary-8: color-mix(in srgb, var(--primary-color) 8%, transparent);
@@ -105,7 +123,7 @@
 
   --text-primary: #2d2a26;
   --text-secondary: #6d6760;
-  --text-tertiary: #a29c95;
+  --text-tertiary: #6f6962; // AA on paper/card (was #a29c95, 2.3:1)
   --text-quaternary: #c0bab3;
   --text-muted: var(--text-tertiary);
 
@@ -121,14 +139,21 @@
 
   --success-color: #10b981;
   --quota-medium-color: #e0aa14;
-  --warning-color: #c65746;
   --error-color: #c65746;
   --danger-color: var(--error-color);
   --info-color: var(--primary-color);
 
-  --warning-bg: rgba(198, 87, 70, 0.12);
-  --warning-border: rgba(198, 87, 70, 0.35);
-  --warning-text: var(--warning-color);
+  // 语义色文本/底/边：text 变体保证 AA 对比度；color 变体只用于填充与进度条
+  --success-text: #047857;
+  --success-bg: color-mix(in srgb, var(--success-color) 10%, transparent);
+  --success-border: color-mix(in srgb, var(--success-color) 35%, transparent);
+  --warning-color: var(--amber-color);
+  --warning-text: var(--amber-text);
+  --warning-bg: var(--amber-10);
+  --warning-border: var(--amber-30);
+  --danger-text: #9c3f31;
+  --danger-bg: rgba(198, 87, 70, 0.12);
+  --danger-border: rgba(198, 87, 70, 0.35);
 
   --success-badge-bg: #d1fae5;
   --success-badge-text: #065f46;
@@ -192,14 +217,20 @@
 
   --success-color: #10b981;
   --quota-medium-color: #ffd862;
-  --warning-color: #c65746;
   --error-color: #c65746;
   --danger-color: var(--error-color);
   --info-color: var(--primary-color);
 
-  --warning-bg: rgba(198, 87, 70, 0.22);
-  --warning-border: rgba(198, 87, 70, 0.45);
-  --warning-text: #f1b0a6;
+  --success-text: #6ee7b7;
+  --success-bg: color-mix(in srgb, var(--success-color) 16%, transparent);
+  --success-border: color-mix(in srgb, var(--success-color) 40%, transparent);
+  --warning-color: var(--amber-color);
+  --warning-text: var(--amber-text);
+  --warning-bg: var(--amber-10);
+  --warning-border: var(--amber-30);
+  --danger-text: #f1b0a6;
+  --danger-bg: rgba(198, 87, 70, 0.22);
+  --danger-border: rgba(198, 87, 70, 0.45);
 
   --success-badge-bg: rgba(6, 78, 59, 0.3);
   --success-badge-text: #6ee7b7;

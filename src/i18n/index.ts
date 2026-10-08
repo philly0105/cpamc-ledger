@@ -20,7 +20,7 @@ i18n.use(initReactI18next).init({
     vi: { translation: vi },
   },
   lng: getInitialLanguage(),
-  fallbackLng: 'zh-CN',
+  fallbackLng: 'en',
   interpolation: {
     escapeValue: false, // React 已经转义
   },

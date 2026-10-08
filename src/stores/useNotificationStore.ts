@@ -7,7 +7,7 @@ import { create } from 'zustand';
 import type { ReactNode } from 'react';
 import type { Notification, NotificationType } from '@/types';
 import { generateId } from '@/utils/helpers';
-import { NOTIFICATION_DURATION_MS } from '@/utils/constants';
+import { NOTIFICATION_DURATION_MS, NOTIFICATION_ERROR_DURATION_MS } from '@/utils/constants';
 
 interface ConfirmationOptions {
   title?: string;
@@ -41,13 +41,15 @@ export const useNotificationStore = create<NotificationState>((set) => ({
     options: null,
   },
 
-  showNotification: (message, type = 'info', duration = NOTIFICATION_DURATION_MS) => {
+  showNotification: (message, type = 'info', duration) => {
+    const resolvedDuration =
+      duration ?? (type === 'error' ? NOTIFICATION_ERROR_DURATION_MS : NOTIFICATION_DURATION_MS);
     const id = generateId();
     const notification: Notification = {
       id,
       message,
       type,
-      duration,
+      duration: resolvedDuration,
     };
 
     set((state) => ({

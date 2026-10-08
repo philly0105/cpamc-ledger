@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "test": "bun test",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives",
-    "verify": "bun run test && bun run lint && bun run build",
+    "check:locales": "node scripts/check-locales.mjs",
+    "verify": "bun run check:locales && bun run test && bun run lint && bun run build",
     "format": "prettier --write \"src/**/*.{ts,tsx,css,scss}\"",
     "type-check": "tsc --noEmit"
   },

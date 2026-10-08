@@ -1,8 +1,9 @@
 import { useTranslation } from 'react-i18next';
+import { Button } from '@/components/ui/Button';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
+import { PageHeader, type PageHeaderMetaSegment } from '@/components/ui/PageHeader';
 import { IconRefreshCw, IconUpload } from '@/components/ui/icons';
 import { useRevealGroup } from '@/hooks/motion';
-import styles from './VaultHeader.module.scss';
 
 export type VaultHeaderProps = {
   totalCount: number;
@@ -20,7 +21,7 @@ export type VaultHeaderProps = {
 };
 
 /**
- * 凭证库头部：eyebrow（▍游标前缀）+ 标题 + mono 遥测 meta 行 + 动作区。
+ * 凭证库头部：共享 PageHeader + ghost 刷新 + 墨色「上传」。
  * meta 行同时承载 VaultPulse 的文字等价信息（谱条本身 aria-hidden）。
  */
 export function VaultHeader(props: VaultHeaderProps) {
@@ -41,67 +42,59 @@ export function VaultHeader(props: VaultHeaderProps) {
   const { t } = useTranslation();
   const revealRef = useRevealGroup<HTMLElement>();
 
+  const meta: PageHeaderMetaSegment[] = [
+    { key: 'total', text: t('auth_files.meta_total', { count: totalCount }) },
+    {
+      key: 'active',
+      text: t('auth_files.meta_active', { count: activeCount }),
+      tone: activeCount > 0 ? 'ok' : 'quiet',
+    },
+  ];
+  if (problemCount > 0) {
+    meta.push({
+      key: 'problem',
+      text: t('auth_files.meta_problem', { count: problemCount }),
+      tone: 'attention',
+    });
+  }
+
   return (
-    <header className={styles.header} ref={revealRef}>
-      <div className={styles.copy}>
-        <h1 className={styles.title} data-reveal>
-          {t('auth_files.title')}
-        </h1>
-        <p className={styles.meta} data-reveal>
-          <span className={styles.metaTotal}>
-            {t('auth_files.meta_total', { count: totalCount })}
-          </span>
-          <span className={styles.metaDot} aria-hidden="true">
-            ·
-          </span>
-          <span className={activeCount > 0 ? styles.metaActive : styles.metaMuted}>
-            {t('auth_files.meta_active', { count: activeCount })}
-          </span>
-          {problemCount > 0 && (
-            <>
-              <span className={styles.metaDot} aria-hidden="true">
-                ·
-              </span>
-              <span className={styles.metaProblem}>
-                {t('auth_files.meta_problem', { count: problemCount })}
-              </span>
-            </>
+    <PageHeader
+      revealRef={revealRef}
+      title={t('auth_files.title')}
+      meta={meta}
+      actions={
+        <>
+          {onRefreshCredentials && (
+            <Button
+              variant="ghost"
+              shape="pill"
+              size="sm"
+              onClick={onRefreshCredentials}
+              disabled={
+                disableControls || loading || refreshingCredentials || credentialRefreshDisabled
+              }
+            >
+              {refreshingCredentials ? <LoadingSpinner size={14} /> : <IconRefreshCw size={14} />}
+              {t('auth_files.refresh_all_button')}
+            </Button>
           )}
-        </p>
-      </div>
-      <div className={styles.actions} data-reveal>
-        {onRefreshCredentials && (
-          <button
-            type="button"
-            className={styles.ghostAction}
-            onClick={onRefreshCredentials}
-            disabled={
-              disableControls || loading || refreshingCredentials || credentialRefreshDisabled
-            }
+          <Button
+            variant="ghost"
+            shape="pill"
+            size="sm"
+            onClick={onRefresh}
+            disabled={loading || refreshing}
           >
-            {refreshingCredentials ? <LoadingSpinner size={14} /> : <IconRefreshCw size={14} />}
-            {t('auth_files.refresh_all_button')}
-          </button>
-        )}
-        <button
-          type="button"
-          className={styles.ghostAction}
-          onClick={onRefresh}
-          disabled={loading || refreshing}
-        >
-          <IconRefreshCw size={14} className={refreshing ? styles.spinning : undefined} />
-          {t('common.refresh')}
-        </button>
-        <button
-          type="button"
-          className={styles.primaryAction}
-          onClick={onUpload}
-          disabled={disableControls || uploading}
-        >
-          {uploading ? <LoadingSpinner size={14} /> : <IconUpload size={15} />}
-          {t('auth_files.upload_button')}
-        </button>
-      </div>
-    </header>
+            <IconRefreshCw size={14} className={refreshing ? 'spinning' : undefined} />
+            {t('common.refresh')}
+          </Button>
+          <Button shape="pill" onClick={onUpload} disabled={disableControls || uploading}>
+            {uploading ? <LoadingSpinner size={14} /> : <IconUpload size={15} />}
+            {t('auth_files.upload_button')}
+          </Button>
+        </>
+      }
+    />
   );
 }

@@ -54,7 +54,13 @@
     "model_alias_placeholder": "Model alias (optional)",
     "invalid_provider_index": "Invalid provider index.",
     "unsaved_changes_title": "Unsaved changes",
-    "unsaved_changes_message": "You have unsaved changes. Leaving now will discard them. Do you want to leave?"
+    "unsaved_changes_message": "You have unsaved changes. Leaving now will discard them. Do you want to leave?",
+    "retry": "Retry",
+    "clear_search": "Clear search",
+    "pagination_label": "Pagination",
+    "pagination_prev": "Previous",
+    "pagination_next": "Next",
+    "pagination_info": "Page {{current}} / {{total}} · {{count}} items"
   },
   "title": {
     "login": "CLI Proxy API Management Center",
@@ -87,7 +93,9 @@
     "error_legacy_backend": "This backend accepts v0 Management API but does not provide v8. Upgrade CLIProxyAPI to v8 or later to use this management page.",
     "error_server": "Backend failed while handling the management request, check the server logs",
     "error_cors": "Cross-origin request blocked, please check server configuration",
-    "error_ssl": "SSL/TLS certificate verification failed"
+    "error_ssl": "SSL/TLS certificate verification failed",
+    "show_key": "Show key",
+    "hide_key": "Hide key"
   },
   "header": {
     "refresh_all": "Refresh All",

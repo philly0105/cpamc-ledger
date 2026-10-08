@@ -1,8 +1,13 @@
-import { Fragment, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Button } from '@/components/ui/Button';
+import {
+  PageHeader,
+  type PageHeaderMetaSegment,
+  type PageHeaderMetaTone,
+} from '@/components/ui/PageHeader';
 import { IconRefreshCw } from '@/components/ui/icons';
 import type { HeaderMetaSegment } from '../uiState';
-import styles from './ConfigHeader.module.scss';
 
 export type ConfigHeaderProps = {
   /** ▍mono meta 行的段落序列（uiState.buildHeaderMeta 的产物）。 */
@@ -14,8 +19,15 @@ export type ConfigHeaderProps = {
   extraActions?: ReactNode;
 };
 
+const TONE: Record<HeaderMetaSegment['tone'], PageHeaderMetaTone> = {
+  muted: 'muted',
+  warning: 'warning',
+  error: 'attention',
+  ok: 'ok',
+};
+
 /**
- * 配置面板头部：标题领衔 + ▍mono 遥测 meta 行 + 重载 ghost。
+ * 配置面板头部：共享 PageHeader + 重载 ghost。
  * 保存动作不在头部常驻 —— 由 FloatingSaveBar 在 dirty 时承载。
  */
 export function ConfigHeader({
@@ -26,48 +38,34 @@ export function ConfigHeader({
   extraActions,
 }: ConfigHeaderProps) {
   const { t } = useTranslation();
-  const toneClass: Record<HeaderMetaSegment['tone'], string> = {
-    muted: styles.metaMuted,
-    warning: styles.metaWarning,
-    error: styles.metaError,
-    ok: styles.metaOk,
-  };
+  const segments: PageHeaderMetaSegment[] = meta.map((segment) => ({
+    key: segment.key,
+    tone: TONE[segment.tone],
+    text:
+      segment.count !== undefined
+        ? t(segment.labelKey, { count: segment.count })
+        : t(segment.labelKey),
+  }));
 
   return (
-    <header className={styles.header}>
-      <div className={styles.copy}>
-        <h1 className={styles.title} data-reveal>
-          {t('config_management.title')}
-        </h1>
-        <p className={styles.meta} data-reveal>
-          {meta.map((segment, index) => (
-            <Fragment key={segment.key}>
-              {index > 0 ? (
-                <span className={styles.metaDot} aria-hidden="true">
-                  ·
-                </span>
-              ) : null}
-              <span className={toneClass[segment.tone]}>
-                {segment.count !== undefined
-                  ? t(segment.labelKey, { count: segment.count })
-                  : t(segment.labelKey)}
-              </span>
-            </Fragment>
-          ))}
-        </p>
-      </div>
-      <div className={styles.actions} data-reveal>
-        {extraActions}
-        <button
-          type="button"
-          className={styles.ghostAction}
-          onClick={onReload}
-          disabled={reloadDisabled}
-        >
-          <IconRefreshCw size={14} className={reloading ? styles.spinning : undefined} />
-          {t('config_management.reload')}
-        </button>
-      </div>
-    </header>
+    <PageHeader
+      title={t('config_management.title')}
+      meta={segments}
+      actions={
+        <>
+          {extraActions}
+          <Button
+            variant="ghost"
+            shape="pill"
+            size="sm"
+            onClick={onReload}
+            disabled={reloadDisabled}
+          >
+            <IconRefreshCw size={14} className={reloading ? 'spinning' : undefined} />
+            {t('config_management.reload')}
+          </Button>
+        </>
+      }
+    />
   );
 }

@@ -54,7 +54,13 @@
     "model_alias_placeholder": "Псевдоним модели (необязательно)",
     "invalid_provider_index": "Неверный индекс провайдера.",
     "unsaved_changes_title": "Несохранённые изменения",
-    "unsaved_changes_message": "У вас есть несохранённые изменения. Если вы уйдёте, они будут потеряны. Выйти?"
+    "unsaved_changes_message": "У вас есть несохранённые изменения. Если вы уйдёте, они будут потеряны. Выйти?",
+    "retry": "Повторить",
+    "clear_search": "Очистить поиск",
+    "pagination_label": "Пагинация",
+    "pagination_prev": "Предыдущая",
+    "pagination_next": "Следующая",
+    "pagination_info": "Страница {{current}} / {{total}} · {{count}} элементов"
   },
   "title": {
     "login": "Центр управления CLI Proxy API",
@@ -87,7 +93,9 @@
     "error_legacy_backend": "Этот сервер поддерживает Management API v0, но не v8. Обновите CLIProxyAPI до v8 или новее, чтобы использовать эту страницу управления.",
     "error_server": "Backend не смог обработать запрос управления, проверьте журналы сервера",
     "error_cors": "Блокировка CORS, проверьте конфигурацию сервера",
-    "error_ssl": "Ошибка проверки SSL/TLS сертификата"
+    "error_ssl": "Ошибка проверки SSL/TLS сертификата",
+    "show_key": "Показать ключ",
+    "hide_key": "Скрыть ключ"
   },
   "header": {
     "refresh_all": "Обновить всё",
@@ -113,7 +121,8 @@
     "operate": "Работа",
     "gateway": "Шлюз",
     "observe": "Наблюдение",
-    "control": "Управление"
+    "control": "Управление",
+    "plugin_pages": "Плагины"
   },
   "nav_meta": {
     "dashboard": "Обзор работы",
@@ -236,13 +245,9 @@
     "card_requests": "Запросы",
     "cooldown_unknown": "Состояние задержки неизвестно",
     "cooldown_models_one": "{{count}} модель на паузе",
-    "cooldown_models_few": "{{count}} модели на паузе",
-    "cooldown_models_many": "{{count}} моделей на паузе",
     "cooldown_models_other": "{{count}} модели на паузе",
     "cooldown_credential": "Задержка всего файла",
     "cooldown_credential_and_models_one": "Файл и {{count}} модель на паузе",
-    "cooldown_credential_and_models_few": "Файл и {{count}} модели на паузе",
-    "cooldown_credential_and_models_many": "Файл и {{count}} моделей на паузе",
     "cooldown_credential_and_models_other": "Файл и {{count}} модели на паузе",
     "cooldown_scope_credential": "Весь файл авторизации",
     "cooldown_earliest": "Ближайшее окончание через ~{{time}}",
@@ -1626,8 +1631,6 @@
     "ledger_refresh_label": "Обновить квоту для {{name}}",
     "window_remaining_label": "{{label}}: осталось {{percent}}%",
     "pool_credentials_one": "{{count}} учётная запись",
-    "pool_credentials_few": "{{count}} учётные записи",
-    "pool_credentials_many": "{{count}} учётных записей",
     "pool_credentials_other": "{{count}} учётной записи"
   },
   "plugin_management": {
@@ -2262,5 +2265,14 @@
     "unavailable": "Сбросы временно недоступны.",
     "rate_limited": "Слишком много запросов.",
     "auth_error": "Авторизация отклонена."
+  },
+  "plugin_resource": {
+    "page_count": "{{count}} страниц",
+    "load_failed": "Не удалось загрузить страницу плагина",
+    "unavailable": "Страница плагина недоступна",
+    "not_found": "Страница плагина не найдена",
+    "not_found_desc": "Эта страница плагина не объявлена в текущем списке плагинов бэкенда.",
+    "empty_src": "URL страницы плагина пуст",
+    "empty_src_desc": "Это меню плагина не предоставляет URL встраиваемой страницы."
   }
 }

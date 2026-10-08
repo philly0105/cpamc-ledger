@@ -54,7 +54,13 @@
     "model_alias_placeholder": "模型別名（選填）",
     "invalid_provider_index": "無效的供應商索引。",
     "unsaved_changes_title": "未儲存的變更",
-    "unsaved_changes_message": "你有未儲存的變更，離開後將遺失這些變更。確定要離開嗎？"
+    "unsaved_changes_message": "你有未儲存的變更，離開後將遺失這些變更。確定要離開嗎？",
+    "retry": "重試",
+    "clear_search": "清除搜尋",
+    "pagination_label": "分頁",
+    "pagination_prev": "上一頁",
+    "pagination_next": "下一頁",
+    "pagination_info": "第 {{current}} / {{total}} 頁 · 共 {{count}} 項"
   },
   "title": {
     "login": "CLI Proxy API Management Center",
@@ -87,7 +93,9 @@
     "error_legacy_backend": "目前後端可使用 v0 管理介面，但不支援 v8。請將 CLIProxyAPI 升級至 v8 或更新版本後再使用此管理頁面。",
     "error_server": "後端處理管理介面時發生錯誤，請查看服務日誌",
     "error_cors": "跨域請求被阻擋，請檢查伺服器設定",
-    "error_ssl": "SSL/TLS 憑證驗證失敗"
+    "error_ssl": "SSL/TLS 憑證驗證失敗",
+    "show_key": "顯示金鑰",
+    "hide_key": "隱藏金鑰"
   },
   "header": {
     "refresh_all": "全部重新整理",
@@ -236,9 +244,7 @@
     "card_toggle": "啟用驗證檔案 {{name}}",
     "card_requests": "請求記錄",
     "cooldown_unknown": "冷卻狀態未知",
-    "cooldown_models": "{{count}} 個模型冷卻",
     "cooldown_credential": "憑證級冷卻",
-    "cooldown_credential_and_models": "憑證及 {{count}} 個模型冷卻",
     "cooldown_scope_credential": "整個憑證",
     "cooldown_earliest": "最早結束約 {{time}}",
     "cooldown_elapsed": "冷卻計時已到期",
@@ -431,7 +437,11 @@
     "quota_refresh_single": "重新整理配額",
     "quota_refresh_hint": "僅重新整理該驗證檔案的配額",
     "quota_refresh_success": "已重新整理「{{name}}」的配額",
-    "quota_refresh_failed": "重新整理「{{name}}」的配額失敗：{{message}}"
+    "quota_refresh_failed": "重新整理「{{name}}」的配額失敗：{{message}}",
+    "cooldown_models_one": "{{count}} 個模型冷卻中",
+    "cooldown_models_other": "{{count}} 個模型冷卻中",
+    "cooldown_credential_and_models_one": "憑證 + {{count}} 個模型冷卻中",
+    "cooldown_credential_and_models_other": "憑證 + {{count}} 個模型冷卻中"
   },
   "antigravity_subscription": {
     "plan_unknown": "未知",
@@ -896,17 +906,6 @@
     "xai_callback_hint": "Grok 有時只在頁面顯示 code。可直接貼上 code，系統會自動拼接為 http://127.0.0.1:56121/callback?... 後提交。",
     "xai_callback_required": "請先貼上 Grok 頁面顯示的 code 或完整回調 URL。",
     "xai_callback_state_missing": "缺少本次 xAI 登入的 state，請重新開始 xAI 登入後再提交 code。",
-    "qwen_oauth_title": "Qwen OAuth",
-    "qwen_oauth_button": "開始 Qwen 登入",
-    "qwen_oauth_hint": "透過裝置授權流程登入 Qwen 服務，自動取得並儲存驗證檔案。",
-    "qwen_oauth_url_label": "授權連結:",
-    "qwen_open_link": "開啟連結",
-    "qwen_copy_link": "複製連結",
-    "qwen_oauth_status_waiting": "等待驗證中...",
-    "qwen_oauth_status_success": "驗證成功！",
-    "qwen_oauth_status_error": "驗證失敗:",
-    "qwen_oauth_start_error": "啟動 Qwen OAuth 失敗:",
-    "qwen_oauth_polling_error": "檢查驗證狀態失敗:",
     "oauth_callback_label": "回調 URL",
     "oauth_callback_placeholder": "http://localhost:1455/auth/callback?code=...&state=...",
     "oauth_callback_hint": "遠端瀏覽器模式：當授權跳轉到 http://localhost:... 後，複製完整 URL 並提交到這裡。",
@@ -929,24 +928,9 @@
     "iflow_oauth_status_error": "驗證失敗:",
     "iflow_oauth_start_error": "啟動 iFlow OAuth 失敗:",
     "iflow_oauth_polling_error": "檢查驗證狀態失敗:",
-    "iflow_cookie_title": "iFlow Cookie 登入",
-    "iflow_cookie_label": "Cookie 內容:",
-    "iflow_cookie_placeholder": "填入 BXAuth 值，以 BXAuth= 開頭",
-    "iflow_cookie_hint": "直接提交 Cookie 以完成登入（無需開啟授權連結），伺服器端將自動儲存憑證。",
-    "iflow_cookie_key_hint": "提示：需在平台上先建立 Key。",
-    "iflow_cookie_button": "提交 Cookie 登入",
-    "iflow_cookie_status_success": "Cookie 登入成功，憑證已儲存。",
-    "iflow_cookie_status_error": "Cookie 登入失敗:",
-    "iflow_cookie_status_duplicate": "設定檔重複:",
-    "iflow_cookie_start_error": "提交 Cookie 登入失敗:",
-    "iflow_cookie_config_duplicate": "偵測到設定檔已存在（重複），如需重新儲存請先刪除原檔案後重試。",
-    "iflow_cookie_required": "請先填寫 Cookie 內容",
-    "iflow_cookie_result_title": "Cookie 登入結果",
-    "iflow_cookie_result_email": "帳號",
-    "iflow_cookie_result_expired": "到期時間",
-    "iflow_cookie_result_path": "儲存路徑",
-    "iflow_cookie_result_type": "類型",
-    "remote_access_disabled": "遠端存取不支援此登入方式，請從本地（localhost）存取"
+    "remote_access_disabled": "遠端存取不支援此登入方式，請從本地（localhost）存取",
+    "login_another_account": "登入另一個帳號",
+    "view_auth_files": "檢視憑證檔案"
   },
   "stats": {
     "success": "成功",
@@ -1646,7 +1630,8 @@
     "ledger_no_windows": "未回報配額視窗",
     "ledger_refresh_label": "重新整理 {{name}} 的配額",
     "window_remaining_label": "{{label}}：剩餘 {{percent}}%",
-    "pool_credentials": "{{count}} 個憑證"
+    "pool_credentials_one": "{{count}} 個憑證",
+    "pool_credentials_other": "{{count}} 個憑證"
   },
   "plugin_management": {
     "title": "插件管理",
