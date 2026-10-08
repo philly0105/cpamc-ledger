@@ -31,11 +31,6 @@
   opacity: 0.68;
 }
 
-.cardCompact {
-  gap: 10px;
-  padding: 13px 14px;
-}
-
 .cardSelected {
   border-color: color-mix(in srgb, var(--primary-color) 55%, transparent);
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--primary-color) 40%, transparent);

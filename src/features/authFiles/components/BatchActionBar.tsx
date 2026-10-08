@@ -5,6 +5,7 @@ import { animate } from 'motion/mini';
 import { Button } from '@/components/ui/Button';
 import { prefersReducedMotion } from '@/hooks/motion';
 import { useActionBarHeightVar } from '@/hooks/useActionBarHeightVar';
+import { OverflowMenu, type OverflowMenuItem } from './OverflowMenu';
 import styles from './BatchActionBar.module.scss';
 
 const easePower3Out = (progress: number) => 1 - (1 - progress) ** 4;
@@ -16,6 +17,8 @@ export type BatchActionBarProps = {
   selectionCount: number;
   selectablePageCount: number;
   selectableFilteredCount: number;
+  /** Rows view has no pages, so "Select page" is hidden there. */
+  showSelectPage: boolean;
   disableControls: boolean;
   batchStatusDisabled: boolean;
   onSelectPage: () => void;
@@ -32,13 +35,15 @@ export type BatchActionBarProps = {
  * 悬浮批量操作条：portal 到 body 的玻璃工具栏。
  * - 选中数 >0 时上浮入场（0.28s 强减速），清零后加速退场（0.22s）再卸载；
  * - reduced-motion 下只做透明度淡入淡出（保留 translateX(-50%) 基础变换，防止错位半宽）；
- * - 实时高度写入 --auth-files-action-bar-height 供页面底部留白。
+ * - 实时高度写入 --auth-files-action-bar-height 供页面底部留白；
+ * - 手机端只留计数 / 启用 / 停用 / 下载，其余收进「...」。
  */
 export function BatchActionBar(props: BatchActionBarProps) {
   const {
     selectionCount,
     selectablePageCount,
     selectableFilteredCount,
+    showSelectPage,
     disableControls,
     batchStatusDisabled,
     onSelectPage,
@@ -142,6 +147,40 @@ export function BatchActionBar(props: BatchActionBarProps) {
 
   if (!visible || typeof document === 'undefined') return null;
 
+  const deleteDisabled = disableControls || selectionCount === 0;
+  const mobileMenuItems: OverflowMenuItem[] = [
+    ...(showSelectPage
+      ? [
+          {
+            key: 'select-page',
+            label: t('auth_files.batch_select_page'),
+            onSelect: onSelectPage,
+            disabled: selectablePageCount === 0,
+          },
+        ]
+      : []),
+    {
+      key: 'select-filtered',
+      label: t('auth_files.batch_select_filtered'),
+      onSelect: onSelectFiltered,
+      disabled: selectableFilteredCount === 0,
+    },
+    {
+      key: 'invert',
+      label: t('auth_files.batch_invert_page'),
+      onSelect: onInvertPage,
+      disabled: selectablePageCount === 0,
+    },
+    { key: 'deselect', label: t('auth_files.batch_deselect'), onSelect: onDeselectAll },
+    {
+      key: 'delete',
+      label: t('common.delete'),
+      onSelect: onDelete,
+      danger: true,
+      disabled: deleteDisabled,
+    },
+  ];
+
   return createPortal(
     <div className={styles.container} ref={containerRef}>
       <div
@@ -154,17 +193,21 @@ export function BatchActionBar(props: BatchActionBarProps) {
           <span className={styles.count} aria-live="polite">
             {t('auth_files.batch_selected', { count: selectionCount })}
           </span>
+          {showSelectPage && (
+            <Button
+              variant="secondary"
+              size="sm"
+              className={styles.desktopOnly}
+              onClick={onSelectPage}
+              disabled={selectablePageCount === 0}
+            >
+              {t('auth_files.batch_select_page')}
+            </Button>
+          )}
           <Button
             variant="secondary"
             size="sm"
-            onClick={onSelectPage}
-            disabled={selectablePageCount === 0}
-          >
-            {t('auth_files.batch_select_page')}
-          </Button>
-          <Button
-            variant="secondary"
-            size="sm"
+            className={styles.desktopOnly}
             onClick={onSelectFiltered}
             disabled={selectableFilteredCount === 0}
           >
@@ -173,12 +216,13 @@ export function BatchActionBar(props: BatchActionBarProps) {
           <Button
             variant="ghost"
             size="sm"
+            className={styles.desktopOnly}
             onClick={onInvertPage}
             disabled={selectablePageCount === 0}
           >
             {t('auth_files.batch_invert_page')}
           </Button>
-          <Button variant="ghost" size="sm" onClick={onDeselectAll}>
+          <Button variant="ghost" size="sm" className={styles.desktopOnly} onClick={onDeselectAll}>
             {t('auth_files.batch_deselect')}
           </Button>
         </div>
@@ -200,11 +244,17 @@ export function BatchActionBar(props: BatchActionBarProps) {
           <Button
             variant="danger"
             size="sm"
+            className={styles.desktopOnly}
             onClick={onDelete}
-            disabled={disableControls || selectionCount === 0}
+            disabled={deleteDisabled}
           >
             {t('common.delete')}
           </Button>
+          <OverflowMenu
+            className={styles.mobileOnly}
+            items={mobileMenuItems}
+            label={t('auth_files.more_actions')}
+          />
         </div>
       </div>
     </div>,

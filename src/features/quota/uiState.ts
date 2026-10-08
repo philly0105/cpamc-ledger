@@ -65,3 +65,31 @@ export const writeQuotaUiState = (state: QuotaUiState) => {
     // ignore
   }
 };
+
+/**
+ * "Show emails" is one preference shared by every page that displays credential
+ * identities (Quota, Auth Files). Persisted across sessions in localStorage;
+ * `null` means nothing stored yet (callers fall back to masked).
+ */
+const SHOW_EMAILS_KEY = 'credentials.showEmails';
+
+export const readShowEmailsPreference = (): boolean | null => {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage.getItem(SHOW_EMAILS_KEY);
+    if (raw === null) return null;
+    const parsed: unknown = JSON.parse(raw);
+    return typeof parsed === 'boolean' ? parsed : null;
+  } catch {
+    return null;
+  }
+};
+
+export const writeShowEmailsPreference = (showEmails: boolean) => {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(SHOW_EMAILS_KEY, JSON.stringify(showEmails));
+  } catch {
+    // ignore
+  }
+};

@@ -47,7 +47,7 @@ import {
   resolvePluginAssetURL,
   type PluginResourceEntry,
 } from '@/features/plugins/pluginResources';
-import { APIKEY_FUN_DISPLAY_NAME, hasApiKeyFunConfig } from '@/features/providers/sponsor';
+import { hasApiKeyFunConfig } from '@/features/providers/sponsor';
 import { triggerHeaderRefresh } from '@/hooks/useHeaderRefresh';
 import {
   LANGUAGE_LABEL_KEYS,
@@ -623,8 +623,7 @@ export function MainLayout() {
   const isApiKeyFunConfigured = hasApiKeyFunConfig(config);
   const quickStartNavItem: SidebarNavLinkItem = {
     path: '/quick-start',
-    label: isApiKeyFunConfigured ? APIKEY_FUN_DISPLAY_NAME : undefined,
-    labelKey: isApiKeyFunConfigured ? undefined : 'nav.quick_start',
+    labelKey: 'nav.quick_start',
     metaKey: 'nav_meta.quick_start',
     icon: sidebarIcons.quickStart,
   };

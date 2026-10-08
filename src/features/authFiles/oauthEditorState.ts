@@ -41,3 +41,23 @@ export const isOAuthEditorDirty = (
 ): boolean =>
   normalizeProviderKey(initialProvider) !== normalizeProviderKey(currentProvider) ||
   baselineContentSignature !== currentContentSignature;
+
+/**
+ * Both OAuth editor pages bind Escape on `window` to go back. That must not
+ * fire while the user is typing in a field or has a picker/menu/dialog open:
+ * those own Escape themselves (close the popover, clear the input).
+ */
+export const shouldIgnoreEditorEscape = (event: {
+  defaultPrevented?: boolean;
+  target: EventTarget | null;
+}): boolean => {
+  if (event.defaultPrevented) return true;
+  const target = event.target;
+  if (!target || typeof (target as Element).closest !== 'function') return false;
+  return Boolean(
+    (target as Element).closest(
+      'input, select, textarea, [contenteditable=""], [contenteditable="true"], ' +
+        '[role="listbox"], [role="menu"], [role="dialog"], [aria-expanded="true"]'
+    )
+  );
+};

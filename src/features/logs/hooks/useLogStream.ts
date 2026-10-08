@@ -65,12 +65,13 @@ export function useLogStream({ active, isFollowing, onFollow }: LogStreamOptions
   const [lastUpdated, setLastUpdated] = useState<number>();
   const [catchingUp, setCatchingUp] = useState(false);
   const [wasReset, setWasReset] = useState(false);
+  const [retryAt, setRetryAt] = useState<number | null>(null);
   const retryDelayRef = useRef(8000);
   const nextReadAtRef = useRef(0);
   const [loading, setLoading] = useState(true);
   const [clearingLogs, setClearingLogs] = useState(false);
   const [error, setError] = useState('');
-  const [autoRefresh, setAutoRefresh] = useLocalStorage('logsPage.autoRefresh', false);
+  const [autoRefresh, setAutoRefresh] = useLocalStorage('logsPage.autoRefresh', true);
   const autoRefreshRef = useRef(autoRefresh);
   useLayoutEffect(() => {
     autoRefreshRef.current = autoRefresh;
@@ -83,6 +84,7 @@ export function useLogStream({ active, isFollowing, onFollow }: LogStreamOptions
     setLastUpdated(undefined);
     setWasReset(false);
     setCatchingUp(false);
+    setRetryAt(null);
     nextReadAtRef.current = 0;
     retryDelayRef.current = 8000;
   };
@@ -129,6 +131,7 @@ export function useLogStream({ active, isFollowing, onFollow }: LogStreamOptions
         if (stickToBottom) onFollow();
         setFileLoggingRequired(false);
         setError('');
+        setRetryAt(null);
         setLastUpdated(Date.now());
         retryDelayRef.current = 8000;
         const more = shouldCatchUp(data, cursor);
@@ -146,6 +149,7 @@ export function useLogStream({ active, isFollowing, onFollow }: LogStreamOptions
       }
       setError(getErrorMessage(err) || t('logs.load_error'));
       nextReadAtRef.current = Date.now() + retryDelayRef.current;
+      setRetryAt(nextReadAtRef.current);
       retryDelayRef.current = Math.min(retryDelayRef.current * 2, 60000);
     } finally {
       if (requests.logs.isCurrent(request)) {
@@ -212,6 +216,7 @@ export function useLogStream({ active, isFollowing, onFollow }: LogStreamOptions
       setLoading(false);
       setClearingLogs(false);
       setError('');
+      setRetryAt(null);
       setFileLoggingRequired(false);
     };
     const invalidateSession = () => {
@@ -268,6 +273,8 @@ export function useLogStream({ active, isFollowing, onFollow }: LogStreamOptions
     lastUpdated,
     catchingUp,
     wasReset,
+    dismissReset: () => setWasReset(false),
+    retryAt,
     loading,
     clearingLogs,
     error,

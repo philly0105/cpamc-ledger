@@ -124,6 +124,13 @@
   align-items: flex-end;
   /* 命中区域比柱体本身更大：整列高度都可悬停 */
   cursor: default;
+  outline: none;
+
+  &:focus-visible .stack {
+    outline: var(--focus-ring);
+    outline-offset: 2px;
+    border-radius: $radius-sm;
+  }
 }
 
 .stack {
@@ -296,6 +303,23 @@
   color: var(--text-tertiary);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+}
+
+/* ---------- 峰值 / 最近一桶读数 ---------- */
+
+.readout {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  font-family: $font-mono;
+  font-size: var(--fs-body);
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.readoutDot {
+  color: var(--text-tertiary);
 }
 
 /* ---------- 数据表 ---------- */

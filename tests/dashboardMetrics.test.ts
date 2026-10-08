@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { formatCompactNumber, formatPercent } from '../src/utils/format';
 import { getProviderKeyCounts } from '../src/features/dashboard/hooks/useDashboardOverview';
 import {
+  MIN_SAMPLE_REQUESTS,
   axisMax,
   niceCeil,
   providerLabel,
@@ -94,6 +95,11 @@ describe('toneForSuccessRate', () => {
     expect(toneForSuccessRate(94.9)).toBe('warning');
     expect(toneForSuccessRate(80)).toBe('warning');
     expect(toneForSuccessRate(79.9)).toBe('critical');
+  });
+
+  test('stays neutral below the minimum sample size', () => {
+    expect(toneForSuccessRate(50, MIN_SAMPLE_REQUESTS - 1)).toBe('idle');
+    expect(toneForSuccessRate(50, MIN_SAMPLE_REQUESTS)).toBe('critical');
   });
 });
 

@@ -17,6 +17,7 @@ import type { AuthFileItem, ResolvedTheme, ThemeColors } from '@/types';
 import { normalizeOAuthProviderKey } from '@/utils/providerKeys';
 import { parseTimestamp } from '@/utils/timestamp';
 import { TYPE_COLORS } from '@/utils/quota';
+import { isCoolingAuthFile } from './cooldowns';
 
 export type { ResolvedTheme, ThemeColors, TypeColorSet } from '@/types';
 export type AuthFileModelItem = {
@@ -56,9 +57,6 @@ export const OAUTH_PROVIDER_PRESETS = [
 
 const OAUTH_PROVIDER_EXCLUDES = new Set(['all', 'unknown', 'empty']);
 
-export const MIN_CARD_PAGE_SIZE = 3;
-export const MAX_CARD_PAGE_SIZE = 30;
-
 export const INTEGER_STRING_PATTERN = /^[+-]?\d+$/;
 export const TRUTHY_TEXT_VALUES = new Set(['true', '1', 'yes', 'y', 'on']);
 export const FALSY_TEXT_VALUES = new Set(['false', '0', 'no', 'n', 'off']);
@@ -90,9 +88,6 @@ export const AUTH_FILE_ICONS: Record<string, AuthFileIconAsset> = {
   qwen: iconQwen,
   vertex: iconVertex,
 };
-
-export const clampCardPageSize = (value: number) =>
-  Math.min(MAX_CARD_PAGE_SIZE, Math.max(MIN_CARD_PAGE_SIZE, Math.round(value)));
 
 export const normalizeProviderKey = normalizeOAuthProviderKey;
 
@@ -146,6 +141,40 @@ export const isProblemAuthFile = (file: AuthFileItem): boolean => {
   const status = typeof file.status === 'string' ? file.status.trim().toLowerCase() : '';
   if (file.disabled === true || status === 'disabled') return false;
   return file.unavailable === true || status === 'error' || hasAuthFileStatusWarning(file);
+};
+
+/**
+ * One status per credential, in precedence order: disabled > problem > cooling > active.
+ * The summary chips, the status filter and the header meta all read this, so their
+ * counts always agree (every file lands in exactly one bucket).
+ */
+export type AuthFileStatusKind = 'active' | 'problem' | 'cooling' | 'disabled';
+
+export const getAuthFileStatusKind = (file: AuthFileItem, nowMs: number): AuthFileStatusKind => {
+  const status = typeof file.status === 'string' ? file.status.trim().toLowerCase() : '';
+  if (file.disabled === true || status === 'disabled') return 'disabled';
+  if (isProblemAuthFile(file)) return 'problem';
+  if (isCoolingAuthFile(file, nowMs)) return 'cooling';
+  return 'active';
+};
+
+export type AuthFileStatusCounts = Record<AuthFileStatusKind | 'total', number>;
+
+export const countAuthFileStatuses = (
+  files: AuthFileItem[],
+  nowMs: number
+): AuthFileStatusCounts => {
+  const counts: AuthFileStatusCounts = {
+    total: files.length,
+    active: 0,
+    problem: 0,
+    cooling: 0,
+    disabled: 0,
+  };
+  files.forEach((file) => {
+    counts[getAuthFileStatusKind(file, nowMs)] += 1;
+  });
+  return counts;
 };
 
 export const getTypeLabel = (t: TFunction, type: string): string => {

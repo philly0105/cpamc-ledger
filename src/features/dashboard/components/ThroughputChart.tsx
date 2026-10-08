@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Collapsible } from '@/components/ui/Collapsible';
 import { formatPercent } from '@/utils/format';
@@ -32,6 +32,7 @@ interface ThroughputChartProps {
 export function ThroughputChart({ traffic }: ThroughputChartProps) {
   const { t } = useTranslation();
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
+  const columnsRef = useRef<HTMLDivElement>(null);
 
   const { buckets, totalSuccess, totalFailure, total, peakIndex, peakTotal } = traffic;
   const scaleMax = useMemo(() => axisMax(peakTotal, TICK_COUNT - 1), [peakTotal]);
@@ -63,6 +64,32 @@ export function ThroughputChart({ traffic }: ThroughputChartProps) {
 
   const activeBucket = activeIndex === null ? null : buckets[activeIndex];
   const activeTotal = activeBucket ? activeBucket.success + activeBucket.failed : 0;
+  const lastBucket = buckets[buckets.length - 1];
+
+  /* 漫游 tabindex：只有当前列（无当前列时取最后一桶）可 Tab 到，左右键在列间移动 */
+  const focusColumn = (index: number) => {
+    const column = columnsRef.current?.children[index] as HTMLElement | undefined;
+    column?.focus();
+  };
+
+  const handleColumnKeyDown = (event: KeyboardEvent<HTMLDivElement>, index: number) => {
+    let next: number | null = null;
+    if (event.key === 'ArrowLeft') next = Math.max(0, index - 1);
+    else if (event.key === 'ArrowRight') next = Math.min(buckets.length - 1, index + 1);
+    else if (event.key === 'Home') next = 0;
+    else if (event.key === 'End') next = buckets.length - 1;
+    else if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      setActiveIndex((current) => (current === index ? null : index));
+      return;
+    }
+    if (next === null) return;
+    event.preventDefault();
+    setActiveIndex(next);
+    focusColumn(next);
+  };
+
+  const focusIndex = activeIndex ?? buckets.length - 1;
 
   if (buckets.length === 0) {
     return (
@@ -114,10 +141,16 @@ export function ThroughputChart({ traffic }: ThroughputChartProps) {
           </div>
 
           <div
+            ref={columnsRef}
             className={styles.columns}
-            role="img"
+            role="group"
             aria-label={summary}
             onMouseLeave={() => setActiveIndex(null)}
+            onBlur={(event) => {
+              if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                setActiveIndex(null);
+              }
+            }}
           >
             {buckets.map((bucket, index) => {
               const bucketTotal = bucket.success + bucket.failed;
@@ -132,7 +165,17 @@ export function ThroughputChart({ traffic }: ThroughputChartProps) {
                 <div
                   key={bucket.time ?? index}
                   className={`${styles.column} ${activeIndex === index ? styles.columnActive : ''}`}
+                  role="button"
+                  tabIndex={index === focusIndex ? 0 : -1}
+                  aria-pressed={activeIndex === index}
+                  aria-label={t('dashboard.traffic_column_label', {
+                    time: bucketRangeLabel(bucket.time, index, buckets.length),
+                    success: bucket.success,
+                    failed: bucket.failed,
+                  })}
                   onMouseEnter={() => setActiveIndex(index)}
+                  onFocus={() => setActiveIndex(index)}
+                  onKeyDown={(event) => handleColumnKeyDown(event, index)}
                   onClick={() => setActiveIndex((current) => (current === index ? null : index))}
                 >
                   {/* 峰值直标放在 scaleY 容器之外，避免入场时被一起挤压 */}
@@ -227,6 +270,29 @@ export function ThroughputChart({ traffic }: ThroughputChartProps) {
           </span>
         ))}
       </div>
+
+      {/* 关键数字不依赖悬停：峰值与最近一桶直接写出来 */}
+      <p className={styles.readout}>
+        <span>
+          {t('dashboard.traffic_readout_peak', {
+            value: peakTotal.toLocaleString(),
+            time: bucketRangeLabel(
+              buckets[peakIndex]?.time,
+              Math.max(0, peakIndex),
+              buckets.length
+            ),
+          })}
+        </span>
+        <span className={styles.readoutDot} aria-hidden="true">
+          ·
+        </span>
+        <span>
+          {t('dashboard.traffic_readout_last', {
+            value: (lastBucket.success + lastBucket.failed).toLocaleString(),
+            time: bucketRangeLabel(lastBucket.time, buckets.length - 1, buckets.length),
+          })}
+        </span>
+      </p>
 
       <Collapsible className={styles.tableToggle} label={t('dashboard.traffic_table')}>
         <table className={styles.table}>

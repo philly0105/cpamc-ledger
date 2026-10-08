@@ -10,7 +10,6 @@ const access = (path: string, status = 200) =>
   `[2026-06-15 10:00:00] [abcd1234] [info ] [gin_logger.go:1] ${status} | 1ms | ::1 | POST "${path}"`;
 const noFilters = () => ({
   methods: new Set<never>(),
-  statuses: new Set<never>(),
   paths: new Set<string>(),
   level: '',
 });
@@ -56,12 +55,12 @@ describe('log selectors use the whole retained buffer', () => {
     expect(searchLogEntries(entries, '019a0000-0000-7000-8000-0000abcd1234', false)).toEqual([]);
     expect(searchLogEntries(entries, 'abcd1234', false)).toHaveLength(1);
   });
-  test('combines level and status filters without mutating entries', () => {
+  test('combines level and quick status filters without mutating entries', () => {
     const entries = createLogParserCache()(
       applyLogPage(emptyLogBuffer(), { lines: [access('/ok'), access('/fail', 500)] })
     );
     expect(
-      filterLogEntries(entries, { ...noFilters(), statuses: new Set(['5xx']), level: 'info' })
+      filterLogEntries(entries, { ...noFilters(), quick: '5xx' as const, level: 'info' })
     ).toEqual([entries[1]]);
     expect(entries).toHaveLength(2);
   });

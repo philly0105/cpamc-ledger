@@ -38,6 +38,14 @@ const readLogRows = (node: HTMLDivElement): LogRow[] => {
   });
 };
 
+/** Auto-scroll would destroy an in-progress text selection inside the viewer. */
+export const hasSelectionInside = (node: HTMLElement | null) => {
+  if (!node || typeof window === 'undefined') return false;
+  const selection = window.getSelection();
+  if (!selection || selection.isCollapsed || !selection.anchorNode) return false;
+  return node.contains(selection.anchorNode);
+};
+
 export const isNearBottom = (node: HTMLDivElement | null) => {
   if (!node) return true;
   return node.scrollHeight - node.scrollTop - node.clientHeight <= 24;
@@ -65,6 +73,7 @@ interface UseLogScrollerReturn {
   resumeFollowing: () => void;
   pendingLines: number;
   historyEvicted: boolean;
+  dismissHistoryEvicted: () => void;
 }
 
 export function useLogScroller(options: UseLogScrollerOptions): UseLogScrollerReturn {
@@ -177,7 +186,9 @@ export function useLogScroller(options: UseLogScrollerOptions): UseLogScrollerRe
     const newestId = rows.length ? rows[rows.length - 1].id : null;
     const prepend = pendingPrependScrollRef.current;
     if (followingRef.current || pendingScrollToBottomRef.current) {
-      if (!loading) {
+      // An explicit resume wins; otherwise leave a live text selection alone.
+      const holdForSelection = !pendingScrollToBottomRef.current && hasSelectionInside(node);
+      if (!loading && !holdForSelection) {
         node.scrollTop = node.scrollHeight;
         pendingScrollToBottomRef.current = false;
       }
@@ -263,5 +274,6 @@ export function useLogScroller(options: UseLogScrollerOptions): UseLogScrollerRe
     resumeFollowing,
     pendingLines,
     historyEvicted,
+    dismissHistoryEvicted: () => setHistoryEvicted(false),
   };
 }

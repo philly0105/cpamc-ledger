@@ -13,6 +13,8 @@ interface OAuthAliasMappingRowProps {
   options: { value: string; label?: string }[];
   disabled: boolean;
   canRemove: boolean;
+  /** Flagged on save when only one of name/alias is filled. */
+  invalid?: boolean;
   onChange: (field: keyof OAuthModelAliasEntry, value: string | boolean) => void;
   onRemove: () => void;
 }
@@ -23,6 +25,7 @@ export function OAuthAliasMappingRow({
   options,
   disabled,
   canRemove,
+  invalid = false,
   onChange,
   onRemove,
 }: OAuthAliasMappingRowProps) {
@@ -31,7 +34,12 @@ export function OAuthAliasMappingRow({
   const rowLabel = t('oauth_model_alias.mapping_row', { number: index + 1 });
 
   return (
-    <div className={styles.mappingRow} role="group" aria-label={rowLabel}>
+    <div
+      className={`${styles.mappingRow} ${invalid ? styles.mappingRowInvalid : ''}`}
+      role="group"
+      aria-label={rowLabel}
+      aria-invalid={invalid || undefined}
+    >
       <span className={styles.mappingNumber} aria-hidden="true">
         {String(index + 1).padStart(2, '0')}
       </span>
@@ -61,9 +69,15 @@ export function OAuthAliasMappingRow({
             disabled={disabled}
             autoComplete="off"
             spellCheck={false}
+            aria-invalid={invalid || undefined}
           />
         </div>
       </div>
+      {invalid && (
+        <p className={styles.mappingError} role="alert">
+          {t('auth_files.alias_row_incomplete')}
+        </p>
+      )}
       <div className={styles.mappingFooter}>
         <ToggleSwitch
           label={t('oauth_model_alias.alias_fork_label')}

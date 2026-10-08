@@ -25,17 +25,6 @@
   min-width: 0;
 }
 
-.errorBanner {
-  font-size: 12.5px;
-  line-height: 1.5;
-  color: var(--danger-color);
-  background: var(--bg-error-light);
-  border: 1px solid var(--danger-border);
-  border-radius: 10px;
-  padding: 9px 12px;
-  overflow-wrap: anywhere;
-}
-
 /* ---------- 卡片网格 ---------- */
 
 .grid {
@@ -45,13 +34,7 @@
   align-items: stretch;
 }
 
-.gridCompact {
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr));
-}
-
-/* provider tab 激活（配额模式）时卡片承载配额区，需要更宽的列。
-   值与 .grid 相同但**必须保留且排在 .gridCompact 之后**：三个类同时挂在网格上，
-   同specificity 靠源序决胜，删掉这条会让「紧凑 + 配额」从 340 掉回 260。 */
+/* provider tab 激活（配额模式）时卡片承载配额区，列宽与 .grid 一致。 */
 .gridQuota {
   grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr));
 }
@@ -62,20 +45,6 @@
   gap: 8px;
   flex-wrap: wrap;
   justify-content: center;
-}
-
-/* ---------- 分页 ---------- */
-
-/* ---------- OAuth 配置双卡 ---------- */
-
-.configGrid {
-  display: grid;
-  gap: 16px;
-  grid-template-columns: minmax(0, 1fr);
-
-  @media (min-width: 1024px) {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
 }
 
 @include mobile {

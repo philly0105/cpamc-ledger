@@ -4,39 +4,53 @@
 .panel {
   background: var(--bg-primary);
   border: 1px solid var(--border-color);
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   box-shadow: var(--shadow);
   padding: 20px;
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 22px;
+  gap: 16px;
 }
 
-.header {
+/* ---------- 厂商行（logo + 名称 + 外链） ---------- */
+
+.vendor {
   display: flex;
-  flex-direction: row;
-  align-items: flex-start;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
   min-width: 0;
 }
 
-.topLink {
+.logo {
+  width: 22px;
+  height: 22px;
+  border-radius: var(--radius-sm);
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
+.vendorName {
+  font-family: $font-mono;
+  font-size: var(--fs-base);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--text-secondary);
+}
+
+.topLink,
+.externalLink {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   min-width: 0;
-  max-width: 100%;
-  height: 30px;
-  padding: 0 8px;
-  border: 1px solid transparent;
+  padding: 4px 8px;
   border-radius: var(--radius-md);
-  background: transparent;
-  color: var(--muted-foreground);
-  font-size: 13px;
+  color: var(--text-secondary);
+  font-size: var(--fs-base);
   font-weight: 600;
-  line-height: 1;
   text-decoration: none;
-  overflow-wrap: anywhere;
   transition:
     background-color $transition-fast,
     color $transition-fast;
@@ -47,45 +61,160 @@
   }
 
   &:focus-visible {
-    outline: 2px solid var(--primary-color);
+    outline: var(--focus-ring);
     outline-offset: 2px;
   }
 
   svg {
     flex-shrink: 0;
   }
+
+  small {
+    font-size: var(--fs-meta);
+    font-weight: 500;
+    color: var(--text-tertiary);
+  }
 }
 
-.titleRow {
+/* 中性外链按钮（不是警告色）：描边药丸 */
+.externalLink {
+  align-self: flex-start;
+  padding: 6px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: $radius-full;
+  color: var(--text-primary);
+
+  &:hover {
+    border-color: var(--border-hover);
+  }
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.intro {
+  margin: 0;
+  max-width: 64ch;
+  font-size: var(--fs-base);
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+/* ---------- 四步清单 ---------- */
+
+.steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
   display: flex;
-  align-items: center;
-  flex-wrap: wrap;
+  flex-direction: column;
+}
+
+.step {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
   gap: 12px;
+  padding: 16px 0;
+  border-top: 1px solid var(--border-color);
+
+  &:first-child {
+    border-top: none;
+    padding-top: 4px;
+  }
+}
+
+.stepBody {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
   min-width: 0;
 }
 
-.logo {
-  width: 30px;
-  height: 30px;
-  border-radius: var(--radius-md);
-  object-fit: contain;
+.stepTitle {
+  font-size: var(--fs-title);
+  font-weight: 650;
+  line-height: 1.3;
+  color: var(--text-primary);
+}
+
+.stepHint {
+  font-size: var(--fs-body);
+  line-height: 1.45;
+  color: var(--text-tertiary);
+}
+
+/* 状态标记：序号 / 对勾 / 警告 / 转圈 */
+.mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 1px solid var(--border-color);
+  font-family: $font-mono;
+  font-size: var(--fs-body);
+  font-weight: 600;
+  color: var(--text-secondary);
   flex-shrink: 0;
 }
 
-.titleText {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  gap: 4px;
+.markTodo {
+  background: var(--bg-secondary);
 }
 
-.title {
-  margin: 0;
-  color: var(--text-primary);
-  font-size: 24px;
-  font-weight: 700;
-  line-height: 1.22;
-  letter-spacing: 0;
+.markRunning {
+  color: var(--text-secondary);
+}
+
+.markDone {
+  border-color: transparent;
+  background: var(--viz-success);
+  color: #fff;
+}
+
+.markFailed {
+  border-color: transparent;
+  background: var(--viz-failure);
+  color: #fff;
+}
+
+/* 校验徽章：复用 mark 的四种色态 */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: $radius-full;
+  border: 1px solid var(--border-color);
+  font-size: var(--fs-body);
+  font-weight: 600;
+  color: var(--text-secondary);
+
+  &.markDone {
+    background: color-mix(in srgb, var(--viz-success) 12%, transparent);
+    border-color: color-mix(in srgb, var(--viz-success) 40%, transparent);
+    color: var(--success-text);
+  }
+
+  &.markFailed {
+    background: var(--danger-bg);
+    border-color: color-mix(in srgb, var(--viz-failure) 40%, transparent);
+    color: var(--danger-text);
+  }
+}
+
+.verifyRow {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .footer {
@@ -93,106 +222,62 @@
   justify-content: flex-end;
   align-items: center;
   gap: 8px;
-  padding-top: 4px;
 }
 
-.empty {
-  border: 1px dashed var(--border-color);
-  border-radius: var(--radius-md);
-  padding: 32px;
-  text-align: center;
-  color: var(--muted-foreground);
-  font-size: 14px;
-}
+/* ---------- 复制字段 ---------- */
 
-.emptyActions {
+.copyField {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  justify-content: center;
   gap: 8px;
-  margin-top: 12px;
+  min-width: 0;
 }
 
-.emptyActionButton {
-  display: inline-flex;
+.copyValue {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 6px 10px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+  font-family: $font-mono;
+  font-size: var(--fs-body);
+  color: var(--text-primary);
+  @include text-ellipsis;
+}
+
+/* ---------- 已配置后的紧凑状态卡 ---------- */
+
+.cardRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+}
+
+.cardActions {
+  display: flex;
   align-items: center;
   gap: 6px;
-  padding: 7px 13px;
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  background: var(--bg-primary);
-  color: var(--text-primary);
-  cursor: pointer;
-  font-size: 14px;
-  font-weight: 500;
-  line-height: 1.4;
-  text-decoration: none;
-  transition:
-    background 0.16s ease,
-    border-color 0.16s ease,
-    color 0.16s ease,
-    box-shadow 0.16s ease;
-
-  &:hover {
-    border-color: var(--border-hover);
-    background: var(--bg-hover);
-  }
-
-  &:focus-visible {
-    outline: 2px solid var(--primary-color);
-    outline-offset: 2px;
-  }
-
-  &:disabled {
-    cursor: not-allowed;
-    opacity: 0.6;
-  }
 }
 
-.emptyActionButtonPrimary {
-  border-color: var(--primary-color);
-  background: var(--primary-color);
-  color: var(--primary-contrast);
-  font-weight: 600;
-
-  &:hover:not(:disabled) {
-    border-color: var(--primary-hover);
-    background: var(--primary-hover);
-  }
-
-  &:focus-visible {
-    outline-color: var(--primary-color);
-  }
+.cardStatus {
+  display: flex;
 }
 
-.emptyActionButtonEmphasis {
-  color: var(--amber-text);
-  border-color: color-mix(in srgb, var(--amber-color) 48%, var(--border-color));
-  background: color-mix(in srgb, var(--amber-color) 14%, var(--bg-primary));
-  font-weight: 600;
-  box-shadow: 0 1px 0 color-mix(in srgb, var(--amber-color) 18%, transparent);
-
-  &:hover {
-    border-color: color-mix(in srgb, var(--amber-color) 72%, var(--border-color));
-    background: color-mix(in srgb, var(--amber-color) 20%, var(--bg-primary));
-    box-shadow: 0 4px 12px color-mix(in srgb, var(--amber-color) 18%, transparent);
-  }
-
-  &:focus-visible {
-    outline-color: var(--amber-color);
-  }
-}
-
-.primaryAction {
-  height: 38px;
-  font-size: 14px;
-  font-weight: 600;
-  line-height: 1;
+.cardField {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
 .spin {
   animation: sponsor-quick-start-spin 0.8s linear infinite;
+
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+  }
 }
 
 @keyframes sponsor-quick-start-spin {
@@ -204,27 +289,13 @@
   }
 }
 
-@media (max-width: 768px) {
+@include mobile {
   .panel {
     padding: 16px;
-    gap: 18px;
-  }
-
-  .title {
-    font-size: 22px;
-    line-height: 1.25;
-  }
-
-  .titleRow {
-    gap: 10px;
   }
 
   .footer {
-    justify-content: stretch;
-
-    button {
-      width: 100%;
-      justify-content: center;
-    }
+    flex-direction: column-reverse;
+    align-items: stretch;
   }
 }

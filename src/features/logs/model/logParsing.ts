@@ -78,17 +78,6 @@ const extractLogLevel = (value: string): LogLevel | undefined => {
   return undefined;
 };
 
-const inferLogLevel = (line: string): LogLevel | undefined => {
-  const lowered = line.toLowerCase();
-  if (/\b(?:fatal|panic)\b/.test(lowered)) return 'fatal';
-  if (/\berror\b/.test(lowered)) return 'error';
-  if (/\bwarn(?:ing)?\b/.test(lowered) || line.includes('警告')) return 'warn';
-  if (/\binfo\b/.test(lowered)) return 'info';
-  if (/\bdebug\b/.test(lowered)) return 'debug';
-  if (/\btrace\b/.test(lowered)) return 'trace';
-  return undefined;
-};
-
 const extractNamedRequestId = (text: string): string | undefined => {
   const match = text.match(LOG_NAMED_REQUEST_ID_REGEX);
   if (!match) return undefined;
@@ -293,7 +282,11 @@ export const parseLogLine = (raw: string): ParsedLogLine => {
     }
   }
 
-  if (!level) level = inferLogLevel(raw);
+  // Levels come from the bracketed token or the HTTP status, never from free text.
+  if (!level && typeof statusCode === 'number') {
+    if (statusCode >= 500) level = 'error';
+    else if (statusCode >= 400) level = 'warn';
+  }
 
   if (message) {
     const match = message.match(GIN_TIMESTAMP_SEGMENT_REGEX);

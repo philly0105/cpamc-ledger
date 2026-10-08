@@ -23,6 +23,8 @@ export interface TrafficWindow {
 export interface ProviderTraffic {
   id: string;
   credentials: number;
+  /** 有配置内联 API Key 时链到 AI Providers，否则链到额度页 */
+  hasApiKeys: boolean;
   success: number;
   failure: number;
   total: number;
@@ -36,14 +38,16 @@ export interface CredentialHealth {
   active: number;
   disabled: number;
   unavailable: number;
-  /** 按供应商类型分组的凭证数，按数量降序 */
-  byType: Array<{ type: string; count: number }>;
 }
 
 /** 顶部计数卡片的原始数值 */
 export interface DashboardCounts {
   managementKeys: number | null;
   providerKeys: number | null;
-  credentials: number | null;
-  models: number | null;
+}
+
+/** 单个数据来源的加载状态；error 非空表示上次加载失败 */
+export interface SourceState {
+  loading: boolean;
+  error: string | null;
 }

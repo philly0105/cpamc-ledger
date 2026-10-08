@@ -60,7 +60,12 @@ import type { QuotaProviderType } from './providers/types';
 import { useDevinQuotaAutoLoad } from './providers/devin/useDevinQuotaAutoLoad';
 import { useQuotaActions } from './hooks/useQuotaActions';
 import { useQuotaBatchLoader } from './hooks/useQuotaBatchLoader';
-import { readQuotaUiState, writeQuotaUiState } from './uiState';
+import {
+  readQuotaUiState,
+  readShowEmailsPreference,
+  writeQuotaUiState,
+  writeShowEmailsPreference,
+} from './uiState';
 import styles from './QuotaPage.module.scss';
 
 const TAB_IDS: string[] = ['all', ...QUOTA_TAB_ORDER];
@@ -79,7 +84,10 @@ export function QuotaPage() {
     () => readQuotaUiState()?.sortMode ?? 'default'
   );
   const [view, setView] = useState<QuotaViewMode>(() => readQuotaUiState()?.view ?? 'ledger');
-  const [showEmails, setShowEmails] = useState(() => readQuotaUiState()?.showEmails ?? false);
+  // Shared with the Auth Files page; the session-scoped quota field is the legacy fallback.
+  const [showEmails, setShowEmails] = useState(
+    () => readShowEmailsPreference() ?? readQuotaUiState()?.showEmails ?? false
+  );
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -214,6 +222,7 @@ export function QuotaPage() {
     const next = !showEmails;
     setShowEmails(next);
     writeQuotaUiState({ showEmails: next });
+    writeShowEmailsPreference(next);
   }, [showEmails]);
 
   // Display names are masked unless emails are shown; search and cache keys

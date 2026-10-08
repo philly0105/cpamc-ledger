@@ -1,24 +1,26 @@
-import { useMemo } from 'react';
-import { Link } from 'react-router-dom';
+import { useCallback, useMemo, useState, type ReactNode } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import {
-  IconBot,
-  IconFileText,
-  IconSidebarConfig,
-  IconSidebarLogs,
-  IconSidebarQuota,
-  IconSidebarSystem,
-} from '@/components/ui/icons';
+import { Button } from '@/components/ui/Button';
+import { ErrorBanner } from '@/components/ui/ErrorBanner';
+import { PageHeader, type PageHeaderMetaSegment } from '@/components/ui/PageHeader';
+import { Skeleton } from '@/components/ui/Skeleton';
+import { IconRefreshCw } from '@/components/ui/icons';
 import { useAuthStore } from '@/stores';
 import { useHeaderRefresh } from '@/hooks/useHeaderRefresh';
+import { useRevealGroup } from '@/hooks/motion';
 import { formatCompactNumber, formatDateValue, formatPercent } from '@/utils/format';
 import { useDashboardOverview } from './hooks/useDashboardOverview';
-import { LiveWire } from './components/LiveWire';
 import { Meter } from './components/Meter';
 import { Sparkline } from './components/Sparkline';
 import { ThroughputChart } from './components/ThroughputChart';
-import { useCountUp, useRevealGroup, useRevealOnScroll } from '@/hooks/motion';
-import { providerLabel, splitWindowMinutes, toneForSuccessRate, type MeterTone } from './utils';
+import {
+  MIN_SAMPLE_REQUESTS,
+  providerLabel,
+  splitWindowMinutes,
+  toneForSuccessRate,
+  type MeterTone,
+} from './utils';
 import styles from './dashboard.module.scss';
 
 const DASH = '—';
@@ -28,32 +30,99 @@ const TILE_ACCENTS: Record<MeterTone, string> = {
   good: 'var(--viz-success)',
   warning: 'var(--amber-color)',
   critical: 'var(--viz-failure)',
-  idle: 'var(--text-quaternary)',
+  idle: 'var(--text-tertiary)',
 };
 
 /** 大数字：六位以内用千分位，再往上压缩，避免撑破排版 */
 const formatHeadline = (value: number): string =>
   value < 100_000 ? value.toLocaleString() : formatCompactNumber(value);
 
+type FleetSort = 'traffic' | 'rate';
+
+interface StatTileProps {
+  label: string;
+  value: string;
+  hint: ReactNode;
+  tone?: MeterTone;
+  loading?: boolean;
+  error?: string | null;
+  onRetry?: () => void;
+  children?: ReactNode;
+}
+
+function StatTile({ label, value, hint, tone, loading, error, onRetry, children }: StatTileProps) {
+  const { t } = useTranslation();
+  return (
+    <article
+      className={styles.statTile}
+      style={
+        {
+          '--tile-accent': tone ? TILE_ACCENTS[tone] : 'var(--border-hover)',
+        } as React.CSSProperties
+      }
+    >
+      <span className={styles.statLabel}>{label}</span>
+      {loading ? (
+        <>
+          <Skeleton height={30} width="55%" />
+          <Skeleton height={12} width="80%" />
+        </>
+      ) : (
+        <>
+          <strong className={styles.statValue}>{error ? DASH : value}</strong>
+          {!error && children}
+          {error ? (
+            <span className={styles.statError}>
+              {error}
+              {onRetry && (
+                <Button variant="ghost" size="xs" shape="pill" onClick={onRetry}>
+                  {t('common.retry')}
+                </Button>
+              )}
+            </span>
+          ) : (
+            <span className={styles.statHint}>{hint}</span>
+          )}
+        </>
+      )}
+    </article>
+  );
+}
+
 export function DashboardPage() {
   const { t, i18n } = useTranslation();
+  const navigate = useNavigate();
   const serverVersion = useAuthStore((state) => state.serverVersion);
   const serverBuildDate = useAuthStore((state) => state.serverBuildDate);
 
-  const { connectionStatus, connected, config, counts, traffic, providers, credentials, refresh } =
-    useDashboardOverview();
+  const {
+    connectionStatus,
+    connected,
+    config,
+    counts,
+    traffic,
+    providers,
+    credentials,
+    updatedAt,
+    sources,
+    retryAuthFiles,
+    retryConfig,
+    refresh,
+  } = useDashboardOverview();
 
-  useHeaderRefresh(refresh, connected);
+  const [refreshing, setRefreshing] = useState(false);
+  const [fleetSort, setFleetSort] = useState<FleetSort>('traffic');
+  const headerRef = useRevealGroup<HTMLElement>();
 
-  /* Hero 与静态网格走分组级联；异步内容区（图表/供应商）保持整块 reveal */
-  const heroRef = useRevealGroup<HTMLElement>();
-  const statsRef = useRevealGroup<HTMLElement>(0.12);
-  const trafficRef = useRevealOnScroll<HTMLElement>();
-  const fleetRef = useRevealOnScroll<HTMLElement>();
-  const detailRef = useRevealGroup<HTMLElement>();
-  const ctaRef = useRevealGroup<HTMLElement>();
-
-  const animatedTotal = useCountUp(traffic.total, connected);
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await refresh();
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refresh]);
+  useHeaderRefresh(handleRefresh, connected);
 
   const windowLabel = useMemo(() => {
     if (traffic.windowMinutes <= 0) return DASH;
@@ -63,7 +132,7 @@ export function DashboardPage() {
     return t('dashboard.window_hm', { hours, minutes });
   }, [traffic.windowMinutes, t]);
 
-  const heroSparkPoints = useMemo(
+  const sparkPoints = useMemo(
     () => traffic.buckets.map((bucket) => bucket.success + bucket.failed),
     [traffic.buckets]
   );
@@ -80,91 +149,89 @@ export function DashboardPage() {
   }, [config?.routingStrategy, t]);
 
   const unknownProviderLabel = t('dashboard.provider_unknown');
-  const successRateTone = toneForSuccessRate(traffic.successRate);
+  const successRateTone = toneForSuccessRate(traffic.successRate, traffic.total);
+  const lowVolume = traffic.total > 0 && traffic.total < MIN_SAMPLE_REQUESTS;
 
-  /** 标题是算出来的判词，不是写死的口号；句尾句号充当状态灯 */
-  const verdict = useMemo(() => {
-    if (!connected) {
-      return connectionStatus === 'connecting'
-        ? { key: 'hero_verdict_connecting', accent: 'var(--amber-color)' }
-        : { key: 'hero_verdict_offline', accent: 'var(--text-quaternary)' };
-    }
-    if (traffic.total === 0 || traffic.successRate === null) {
-      return { key: 'hero_verdict_idle', accent: 'var(--text-quaternary)' };
-    }
-    const keyByTone: Record<MeterTone, string> = {
-      good: 'hero_verdict_good',
-      warning: 'hero_verdict_warning',
-      critical: 'hero_verdict_critical',
-      idle: 'hero_verdict_idle',
-    };
-    return { key: keyByTone[successRateTone], accent: TILE_ACCENTS[successRateTone] };
-  }, [connected, connectionStatus, traffic.total, traffic.successRate, successRateTone]);
+  const sortedProviders = useMemo(() => {
+    if (fleetSort === 'traffic') return providers;
+    return [...providers].sort(
+      (a, b) => (a.successRate ?? 101) - (b.successRate ?? 101) || b.total - a.total
+    );
+  }, [providers, fleetSort]);
 
-  /* 句号状态灯只在「有活着的流量」时呼吸；离线/静默时保持安静 */
-  const heroAlive = connected && traffic.total > 0;
-
-  const connectionLabel = t(
+  /* ---------- 页头 meta ---------- */
+  const connectionTone: PageHeaderMetaSegment['tone'] =
     connectionStatus === 'connected'
-      ? 'common.connected'
+      ? 'ok'
       : connectionStatus === 'connecting'
-        ? 'common.connecting'
-        : 'common.disconnected'
-  );
-  const versionLabel = serverVersion ? `v${serverVersion.trim().replace(/^[vV]+/, '')}` : null;
-  const heroMetaLine = [versionLabel, connectionLabel].filter(Boolean).join(' · ');
+        ? 'warning'
+        : 'attention';
+  const meta: PageHeaderMetaSegment[] = [];
+  if (serverVersion) {
+    meta.push({ key: 'version', text: `v${serverVersion.trim().replace(/^[vV]+/, '')}` });
+  }
+  meta.push({
+    key: 'connection',
+    tone: connectionTone,
+    text: t(
+      connectionStatus === 'connected'
+        ? 'common.connected'
+        : connectionStatus === 'connecting'
+          ? 'common.connecting'
+          : 'common.disconnected'
+    ),
+  });
+  if (connected && updatedAt !== null) {
+    meta.push({
+      key: 'updated',
+      tone: 'quiet',
+      text: t('dashboard.meta_updated', {
+        time: new Date(updatedAt).toLocaleTimeString(i18n.language, { hour12: false }),
+      }),
+    });
+    meta.push({ key: 'live', tone: 'ok', text: t('dashboard.meta_live') });
+  }
 
-  const statTiles = [
-    {
-      key: 'success',
-      label: t('dashboard.success_rate'),
-      value: traffic.successRate === null ? DASH : formatPercent(traffic.successRate),
-      hint: t('dashboard.stat_success_hint', { total: traffic.total.toLocaleString() }),
-      meter: traffic.successRate,
-      tone: successRateTone,
-    },
-    {
-      key: 'credentials',
-      label: t('dashboard.stat_credentials'),
-      value: credentials ? credentials.total.toLocaleString() : DASH,
-      hint: credentials
-        ? t('dashboard.stat_credentials_hint', {
-            active: credentials.active,
-            disabled: credentials.disabled + credentials.unavailable,
-          })
-        : t('dashboard.stat_credentials_empty'),
-      meter:
-        credentials && credentials.total > 0
-          ? (credentials.active / credentials.total) * 100
-          : null,
-      tone: undefined,
-    },
-    {
-      key: 'providerKeys',
-      label: t('dashboard.stat_provider_keys'),
-      value: counts.providerKeys === null ? DASH : counts.providerKeys.toLocaleString(),
-      hint: t('dashboard.stat_provider_keys_hint'),
-      meter: null,
-      tone: undefined,
-    },
-    {
-      key: 'models',
-      label: t('dashboard.stat_models'),
-      value: counts.models === null ? DASH : counts.models.toLocaleString(),
-      hint: t('dashboard.stat_models_hint'),
-      meter: null,
-      tone: undefined,
-    },
-  ];
+  /* ---------- 关注条 / 首次使用卡 ---------- */
+  const firstRun =
+    connected && credentials !== null && credentials.total === 0 && counts.providerKeys === 0;
 
+  const attentionItems: Array<{ key: string; text: string; to: string }> = [];
+  if (!connected) {
+    attentionItems.push({
+      key: 'offline',
+      text: t('dashboard.attention_disconnected'),
+      to: '/system',
+    });
+  }
+  if (credentials && credentials.unavailable > 0) {
+    attentionItems.push({
+      key: 'unavailable',
+      text: t('dashboard.attention_unavailable', { count: credentials.unavailable }),
+      to: '/auth-files',
+    });
+  }
+  providers.forEach((provider) => {
+    const tone = toneForSuccessRate(provider.successRate, provider.total);
+    if (tone !== 'warning' && tone !== 'critical') return;
+    attentionItems.push({
+      key: `provider:${provider.id}`,
+      text: t('dashboard.attention_provider_rate', {
+        provider: providerLabel(provider.id, unknownProviderLabel),
+        rate: formatPercent(provider.successRate ?? 0),
+      }),
+      to: '/logs',
+    });
+  });
+
+  /* ---------- 运行参数 ---------- */
   const runtimeRows: Array<{ label: string; value: string; mono?: boolean }> = [
     { label: t('dashboard.runtime_routing'), value: routingStrategy },
     { label: t('dashboard.runtime_retry'), value: String(config?.requestRetry ?? 0) },
     {
-      label: t('dashboard.runtime_management_keys'),
+      label: t('dashboard.runtime_access_keys'),
       value: counts.managementKeys === null ? DASH : String(counts.managementKeys),
     },
-    { label: t('dashboard.runtime_version'), value: serverVersion?.trim() || DASH },
     {
       label: t('dashboard.runtime_build'),
       value: formatDateValue(serverBuildDate, i18n.language) || DASH,
@@ -182,358 +249,352 @@ export function DashboardPage() {
       ]
     : [];
 
-  const ctaCards = [
-    {
-      to: '/ai-providers',
-      icon: <IconBot size={20} />,
-      title: t('nav.ai_providers'),
-      description: t('dashboard.cta_providers_desc'),
-    },
-    {
-      to: '/auth-files',
-      icon: <IconFileText size={20} />,
-      title: t('nav.auth_files'),
-      description: t('dashboard.cta_auth_files_desc'),
-    },
-    {
-      to: '/config',
-      icon: <IconSidebarConfig size={20} />,
-      title: t('nav.config_management'),
-      description: t('dashboard.cta_config_desc'),
-    },
-    {
-      to: '/quota',
-      icon: <IconSidebarQuota size={20} />,
-      title: t('nav.quota_management'),
-      description: t('dashboard.cta_quota_desc'),
-    },
-    {
-      to: '/logs',
-      icon: <IconSidebarLogs size={20} />,
-      title: t('nav.logs'),
-      description: t('dashboard.cta_logs_desc'),
-    },
-    {
-      to: '/system',
-      icon: <IconSidebarSystem size={20} />,
-      title: t('nav.system_info'),
-      description: t('dashboard.cta_system_desc'),
-    },
-  ];
+  const offlineNote = <p className={styles.emptyNote}>{t('dashboard.disconnected_note')}</p>;
+  const trafficLoading = connected && sources.traffic.loading;
+  const authFilesLoading = connected && sources.authFiles.loading && credentials === null;
+  const configLoading = connected && sources.config.loading && !config;
 
   return (
     <div className={styles.page}>
-      <div className={styles.ambient} aria-hidden="true">
-        <span className={styles.washTop} />
-        <span className={styles.gridWash} />
-      </div>
-
-      {/* ---------- Hero ---------- */}
-      <section className={styles.hero} ref={heroRef}>
-        <div className={styles.heroCopy}>
-          <h1 className={styles.heroTitle} data-reveal>
-            {t(`dashboard.${verdict.key}`)}
-            <span
-              className={`${styles.heroPeriod} ${heroAlive ? styles.heroPeriodLive : ''}`}
-              style={{ color: verdict.accent }}
+      <PageHeader
+        title={t('nav.dashboard')}
+        meta={meta}
+        revealRef={headerRef}
+        actions={
+          <>
+            <Button
+              variant="secondary"
+              shape="pill"
+              size="sm"
+              onClick={() => void handleRefresh()}
+              disabled={!connected || refreshing}
+              aria-label={t('common.refresh')}
             >
-              {t('dashboard.hero_period')}
-            </span>
-          </h1>
-          <p className={styles.heroMeta} data-reveal>
-            {heroMetaLine}
-          </p>
-          <div className={styles.heroActions} data-reveal>
-            <Link to="/ai-providers" className={styles.primaryAction}>
+              <IconRefreshCw size={14} className={refreshing ? 'spinning' : undefined} />
+              {t('common.refresh')}
+            </Button>
+            <Button shape="pill" onClick={() => navigate('/ai-providers')}>
               {t('dashboard.cta_manage_providers')}
-            </Link>
-            <Link to="/logs" className={styles.ghostAction}>
-              {t('dashboard.cta_inspect_logs')}{' '}
-              <span className={styles.linkArrow} aria-hidden="true">
-                →
-              </span>
-            </Link>
-          </div>
-        </div>
+            </Button>
+          </>
+        }
+      />
 
-        <div className={styles.heroPanel} data-reveal="scale">
-          <div className={styles.heroPanelTop}>
-            <span className={styles.heroPanelLabel}>{t('dashboard.hero_requests_label')}</span>
-            {connected && (
-              <span className={styles.liveBadge}>
-                <i className={styles.liveDot} aria-hidden="true" />
-                {t('dashboard.hero_live')}
-              </span>
-            )}
+      {/* ---------- 关注条 / 首次使用 ---------- */}
+      {firstRun ? (
+        <section className={styles.firstRun} aria-label={t('dashboard.first_run_title')}>
+          <strong className={styles.firstRunTitle}>{t('dashboard.first_run_title')}</strong>
+          <span className={styles.firstRunHint}>{t('dashboard.first_run_hint')}</span>
+          <div className={styles.firstRunLinks}>
+            <Link to="/quick-start" className={styles.firstRunLink}>
+              {t('nav.quick_start')} →
+            </Link>
+            <Link to="/ai-providers" className={styles.firstRunLink}>
+              {t('nav.ai_providers')} →
+            </Link>
+            <Link to="/auth-files" className={styles.firstRunLink}>
+              {t('nav.auth_files')} →
+            </Link>
           </div>
-          <strong className={styles.heroFigure}>
-            {connected ? formatHeadline(animatedTotal) : DASH}
-          </strong>
-          <span className={styles.heroPanelMeta}>
-            {t('dashboard.hero_window_meta', { window: windowLabel })}
-          </span>
-          {traffic.total > 0 && (
-            <div className={styles.ratioBar} aria-hidden="true">
-              {traffic.totalSuccess > 0 && (
+        </section>
+      ) : attentionItems.length > 0 ? (
+        <ul className={styles.attention} aria-label={t('dashboard.attention_aria')}>
+          {attentionItems.map((item) => (
+            <li key={item.key}>
+              <Link to={item.to} className={styles.attentionItem}>
+                {item.text} →
+              </Link>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+
+      {/* ---------- KPI ---------- */}
+      <section className={styles.statsRow} aria-label={t('dashboard.stats_aria')}>
+        <StatTile
+          label={t('dashboard.stat_requests')}
+          value={connected ? formatHeadline(traffic.total) : DASH}
+          loading={trafficLoading}
+          hint={
+            connected
+              ? t('dashboard.stat_requests_hint', {
+                  success: traffic.totalSuccess.toLocaleString(),
+                  failed: traffic.totalFailure.toLocaleString(),
+                  window: windowLabel,
+                })
+              : t('dashboard.disconnected_hint')
+          }
+        >
+          {connected && traffic.total > 0 && (
+            <>
+              <div className={styles.splitBar} aria-hidden="true">
+                {traffic.totalSuccess > 0 && (
+                  <span
+                    className={`${styles.splitSegment} ${styles.splitSuccess}`}
+                    style={{ flexGrow: traffic.totalSuccess }}
+                  />
+                )}
+                {traffic.totalFailure > 0 && (
+                  <span
+                    className={`${styles.splitSegment} ${styles.splitFailure}`}
+                    style={{ flexGrow: traffic.totalFailure }}
+                  />
+                )}
+              </div>
+              <Sparkline
+                points={sparkPoints}
+                color="var(--viz-success)"
+                ariaLabel={t('dashboard.stat_requests_spark_label', { window: windowLabel })}
+                className={styles.statSpark}
+              />
+            </>
+          )}
+        </StatTile>
+
+        <StatTile
+          label={t('dashboard.success_rate')}
+          value={
+            connected && traffic.successRate !== null ? formatPercent(traffic.successRate) : DASH
+          }
+          tone={connected ? successRateTone : undefined}
+          loading={trafficLoading}
+          hint={
+            !connected
+              ? t('dashboard.disconnected_hint')
+              : lowVolume
+                ? t('dashboard.stat_success_low_volume', { total: traffic.total.toLocaleString() })
+                : t('dashboard.stat_success_hint', { total: traffic.total.toLocaleString() })
+          }
+        >
+          {connected && traffic.successRate !== null && (
+            <Meter
+              value={traffic.successRate}
+              tone={successRateTone}
+              ariaLabel={t('dashboard.success_rate')}
+              className={styles.statMeter}
+            />
+          )}
+        </StatTile>
+
+        <StatTile
+          label={t('dashboard.stat_auth_files')}
+          value={connected && credentials ? credentials.total.toLocaleString() : DASH}
+          loading={authFilesLoading}
+          error={connected && sources.authFiles.error ? t('dashboard.stat_auth_files_error') : null}
+          onRetry={() => void retryAuthFiles()}
+          hint={
+            !connected
+              ? t('dashboard.disconnected_hint')
+              : credentials && credentials.total > 0
+                ? t('dashboard.stat_auth_files_hint', {
+                    active: credentials.active,
+                    unavailable: credentials.unavailable,
+                    disabled: credentials.disabled,
+                  })
+                : t('dashboard.stat_auth_files_empty')
+          }
+        >
+          {connected && credentials && credentials.total > 0 && (
+            <div className={styles.healthBar} aria-hidden="true">
+              {credentials.active > 0 && (
                 <span
-                  className={`${styles.ratioSegment} ${styles.splitSuccess}`}
-                  style={{ flexGrow: traffic.totalSuccess }}
+                  className={`${styles.healthSegment} ${styles.healthActive}`}
+                  style={{ flexGrow: credentials.active }}
                 />
               )}
-              {traffic.totalFailure > 0 && (
+              {credentials.unavailable > 0 && (
                 <span
-                  className={`${styles.ratioSegment} ${styles.splitFailure}`}
-                  style={{ flexGrow: traffic.totalFailure }}
+                  className={`${styles.healthSegment} ${styles.healthUnavailable}`}
+                  style={{ flexGrow: credentials.unavailable }}
+                />
+              )}
+              {credentials.disabled > 0 && (
+                <span
+                  className={`${styles.healthSegment} ${styles.healthDisabled}`}
+                  style={{ flexGrow: credentials.disabled }}
                 />
               )}
             </div>
           )}
-          <div className={styles.heroSplit}>
-            <span className={styles.heroSplitItem}>
-              <i className={`${styles.splitSwatch} ${styles.splitSuccess}`} aria-hidden="true" />
-              {t('stats.success')}
-              <b>{traffic.totalSuccess.toLocaleString()}</b>
-            </span>
-            <span className={styles.heroSplitItem}>
-              <i className={`${styles.splitSwatch} ${styles.splitFailure}`} aria-hidden="true" />
-              {t('stats.failure')}
-              <b>{traffic.totalFailure.toLocaleString()}</b>
-            </span>
-          </div>
-        </div>
+        </StatTile>
 
-        <div className={styles.heroWire}>
-          <LiveWire
-            points={heroSparkPoints}
-            ariaLabel={t('dashboard.hero_spark_label', { window: windowLabel })}
-          />
-        </div>
-      </section>
-
-      {/* ---------- KPI ---------- */}
-      <section className={styles.statsRow} ref={statsRef} aria-label={t('dashboard.stats_aria')}>
-        {statTiles.map((tile) => (
-          <article
-            key={tile.key}
-            className={styles.statTile}
-            data-reveal
-            style={
-              {
-                '--tile-accent': tile.tone ? TILE_ACCENTS[tile.tone] : 'var(--border-hover)',
-              } as React.CSSProperties
-            }
-          >
-            <span className={styles.statLabel}>{tile.label}</span>
-            <strong className={styles.statValue}>{tile.value}</strong>
-            {tile.meter !== null && tile.meter !== undefined && (
-              <Meter
-                value={tile.meter}
-                tone={tile.tone}
-                ariaLabel={tile.label}
-                className={styles.statMeter}
-              />
-            )}
-            <span className={styles.statHint}>{tile.hint}</span>
-          </article>
-        ))}
+        <StatTile
+          label={t('dashboard.stat_provider_keys')}
+          value={
+            connected && counts.providerKeys !== null ? counts.providerKeys.toLocaleString() : DASH
+          }
+          loading={configLoading}
+          error={connected && sources.config.error ? t('dashboard.runtime_error') : null}
+          onRetry={retryConfig}
+          hint={
+            connected ? t('dashboard.stat_provider_keys_hint') : t('dashboard.disconnected_hint')
+          }
+        />
       </section>
 
       {/* ---------- Traffic ---------- */}
-      <section className={styles.section} ref={trafficRef}>
+      <section className={styles.section}>
         <header className={styles.sectionHead}>
-          <span className={styles.eyebrow}>{t('dashboard.traffic_eyebrow')}</span>
           <h2 className={styles.sectionTitle}>{t('dashboard.traffic_title')}</h2>
           <p className={styles.sectionDescription}>
             {t('dashboard.traffic_description', { window: windowLabel })}
           </p>
         </header>
         <div className={styles.panel}>
-          <ThroughputChart traffic={traffic} />
+          {!connected ? (
+            offlineNote
+          ) : trafficLoading ? (
+            <Skeleton height={208} />
+          ) : (
+            <ThroughputChart traffic={traffic} />
+          )}
         </div>
       </section>
 
-      {/* ---------- Provider fleet ---------- */}
-      <section className={styles.section} ref={fleetRef}>
-        <header className={styles.sectionHead}>
-          <span className={styles.eyebrow}>{t('dashboard.fleet_eyebrow')}</span>
-          <h2 className={styles.sectionTitle}>{t('dashboard.fleet_title')}</h2>
-          <p className={styles.sectionDescription}>{t('dashboard.fleet_description')}</p>
+      {/* ---------- Providers ---------- */}
+      <section className={styles.section}>
+        <header className={`${styles.sectionHead} ${styles.sectionHeadRow}`}>
+          <div>
+            <h2 className={styles.sectionTitle}>{t('dashboard.fleet_title')}</h2>
+            <p className={styles.sectionDescription}>{t('dashboard.fleet_description')}</p>
+          </div>
+          {connected && providers.length > 1 && (
+            <div
+              className={styles.sortToggle}
+              role="group"
+              aria-label={t('dashboard.fleet_sort_label')}
+            >
+              {(['traffic', 'rate'] as const).map((option) => (
+                <Button
+                  key={option}
+                  variant={fleetSort === option ? 'secondary' : 'ghost'}
+                  size="xs"
+                  shape="pill"
+                  aria-pressed={fleetSort === option}
+                  onClick={() => setFleetSort(option)}
+                >
+                  {t(
+                    option === 'traffic'
+                      ? 'dashboard.fleet_sort_traffic'
+                      : 'dashboard.fleet_sort_rate'
+                  )}
+                </Button>
+              ))}
+            </div>
+          )}
         </header>
         <div className={styles.panel}>
-          {providers.length === 0 ? (
+          {!connected ? (
+            offlineNote
+          ) : trafficLoading || authFilesLoading ? (
+            <div className={styles.skeletonRows}>
+              <Skeleton height={44} />
+              <Skeleton height={44} />
+              <Skeleton height={44} />
+            </div>
+          ) : providers.length === 0 ? (
             <p className={styles.emptyNote}>{t('dashboard.fleet_empty')}</p>
           ) : (
             <ul className={styles.fleetList}>
-              {providers.map((provider, index) => (
-                <li key={provider.id} className={styles.fleetRow}>
-                  <span className={styles.fleetRank} aria-hidden="true">
-                    {String(index + 1).padStart(2, '0')}
-                  </span>
-                  <div className={styles.fleetIdentity}>
-                    <span className={styles.fleetName}>
-                      {providerLabel(provider.id, unknownProviderLabel)}
-                    </span>
-                    <span className={styles.fleetMeta}>
-                      {t('dashboard.fleet_credentials', { value: provider.credentials })}
-                    </span>
-                  </div>
-                  <Sparkline
-                    points={provider.buckets.map((bucket) => bucket.success + bucket.failed)}
-                    ariaLabel={t('dashboard.fleet_spark_label', {
-                      provider: providerLabel(provider.id, unknownProviderLabel),
-                    })}
-                    className={styles.fleetSpark}
-                  />
-                  <div className={styles.fleetNumbers}>
-                    <span className={styles.fleetTotal}>{provider.total.toLocaleString()}</span>
-                    <span className={styles.fleetTotalLabel}>{t('dashboard.fleet_requests')}</span>
-                  </div>
-                  <div className={styles.fleetRate}>
-                    <span className={styles.fleetRateValue}>
-                      {provider.successRate === null ? DASH : formatPercent(provider.successRate)}
-                    </span>
-                    <Meter
-                      value={provider.successRate}
-                      ariaLabel={t('dashboard.success_rate')}
-                      className={styles.fleetMeter}
-                    />
-                  </div>
-                </li>
-              ))}
+              {sortedProviders.map((provider) => {
+                const name = providerLabel(provider.id, unknownProviderLabel);
+                const tone = toneForSuccessRate(provider.successRate, provider.total);
+                return (
+                  <li key={provider.id}>
+                    <Link
+                      to={provider.hasApiKeys ? '/ai-providers' : '/quota'}
+                      className={styles.fleetRow}
+                    >
+                      <div className={styles.fleetIdentity}>
+                        <span className={styles.fleetName}>{name}</span>
+                        <span className={styles.fleetMeta}>
+                          {t('dashboard.fleet_credentials', { value: provider.credentials })}
+                        </span>
+                      </div>
+                      <Sparkline
+                        points={provider.buckets.map((bucket) => bucket.success + bucket.failed)}
+                        ariaLabel={t('dashboard.fleet_spark_label', { provider: name })}
+                        className={styles.fleetSpark}
+                      />
+                      <div className={styles.fleetCounts}>
+                        <span className={styles.fleetOk}>
+                          {t('dashboard.fleet_ok', { count: provider.success })}
+                        </span>
+                        <span
+                          className={provider.failure > 0 ? styles.fleetFailed : styles.fleetOk}
+                        >
+                          {t('dashboard.fleet_failed', { count: provider.failure })}
+                        </span>
+                      </div>
+                      <div className={styles.fleetRate}>
+                        <span className={styles.fleetRateValue}>
+                          {provider.successRate === null
+                            ? DASH
+                            : formatPercent(provider.successRate)}
+                        </span>
+                        <Meter
+                          value={provider.successRate}
+                          tone={tone}
+                          ariaLabel={t('dashboard.success_rate')}
+                          className={styles.fleetMeter}
+                        />
+                      </div>
+                    </Link>
+                  </li>
+                );
+              })}
             </ul>
           )}
         </div>
       </section>
 
-      {/* ---------- Credential health + runtime ---------- */}
-      <section className={styles.detailGrid} ref={detailRef}>
-        <div className={styles.panel} data-reveal>
-          <header className={styles.panelHead}>
-            <span className={styles.eyebrow}>{t('dashboard.health_eyebrow')}</span>
-            <h2 className={styles.panelTitle}>{t('dashboard.health_title')}</h2>
-          </header>
-          {!credentials || credentials.total === 0 ? (
-            <p className={styles.emptyNote}>{t('dashboard.health_empty')}</p>
+      {/* ---------- Runtime ---------- */}
+      <section className={styles.section}>
+        <header className={styles.sectionHead}>
+          <h2 className={styles.sectionTitle}>{t('dashboard.runtime_title')}</h2>
+          <p className={styles.sectionDescription}>{t('dashboard.runtime_description')}</p>
+        </header>
+        <div className={styles.panel}>
+          {!connected ? (
+            offlineNote
+          ) : sources.config.error ? (
+            <ErrorBanner message={t('dashboard.runtime_error')} onRetry={retryConfig} />
+          ) : configLoading ? (
+            <div className={styles.skeletonRows}>
+              <Skeleton height={18} />
+              <Skeleton height={18} />
+              <Skeleton height={18} />
+            </div>
           ) : (
             <>
-              <div className={styles.healthBar}>
-                {credentials.active > 0 && (
-                  <span
-                    className={`${styles.healthSegment} ${styles.healthActive}`}
-                    style={{ flexGrow: credentials.active }}
-                  />
-                )}
-                {credentials.unavailable > 0 && (
-                  <span
-                    className={`${styles.healthSegment} ${styles.healthUnavailable}`}
-                    style={{ flexGrow: credentials.unavailable }}
-                  />
-                )}
-                {credentials.disabled > 0 && (
-                  <span
-                    className={`${styles.healthSegment} ${styles.healthDisabled}`}
-                    style={{ flexGrow: credentials.disabled }}
-                  />
-                )}
-              </div>
-              <ul className={styles.healthLegend}>
-                <li>
-                  <i className={`${styles.healthKey} ${styles.healthActive}`} aria-hidden="true" />
-                  {t('dashboard.health_active')}
-                  <b>{credentials.active.toLocaleString()}</b>
-                </li>
-                <li>
-                  <i
-                    className={`${styles.healthKey} ${styles.healthUnavailable}`}
-                    aria-hidden="true"
-                  />
-                  {t('dashboard.health_unavailable')}
-                  <b>{credentials.unavailable.toLocaleString()}</b>
-                </li>
-                <li>
-                  <i
-                    className={`${styles.healthKey} ${styles.healthDisabled}`}
-                    aria-hidden="true"
-                  />
-                  {t('dashboard.health_disabled')}
-                  <b>{credentials.disabled.toLocaleString()}</b>
-                </li>
-              </ul>
-              <div className={styles.typeBreakdown}>
-                <span className={styles.typeBreakdownLabel}>{t('dashboard.health_by_type')}</span>
-                <ul className={styles.typeList}>
-                  {credentials.byType.map((entry) => (
-                    <li key={entry.type} className={styles.typeChip}>
-                      {providerLabel(entry.type, unknownProviderLabel)}
-                      <b>{entry.count.toLocaleString()}</b>
+              <dl className={styles.specList}>
+                {runtimeRows.map((row) => (
+                  <div key={row.label} className={styles.specRow}>
+                    <dt className={styles.specLabel}>{row.label}</dt>
+                    <dd className={`${styles.specValue} ${row.mono ? styles.specMono : ''}`}>
+                      {row.value}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+              {runtimeToggles.length > 0 && (
+                <ul className={styles.toggleList}>
+                  {runtimeToggles.map((toggle) => (
+                    <li
+                      key={toggle.label}
+                      className={`${styles.togglePill} ${toggle.on ? styles.toggleOn : styles.toggleOff}`}
+                    >
+                      {toggle.label}
+                      <b>{toggle.on ? t('common.yes') : t('common.no')}</b>
                     </li>
                   ))}
                 </ul>
-              </div>
-              <Link to="/auth-files" className={styles.panelLink}>
-                {t('dashboard.health_link')}{' '}
-                <span className={styles.linkArrow} aria-hidden="true">
-                  →
-                </span>
+              )}
+              <Link to="/config" className={styles.panelLink}>
+                {t('dashboard.runtime_link')} →
               </Link>
             </>
           )}
-        </div>
-
-        <div className={styles.panel} data-reveal>
-          <header className={styles.panelHead}>
-            <span className={styles.eyebrow}>{t('dashboard.runtime_eyebrow')}</span>
-            <h2 className={styles.panelTitle}>{t('dashboard.runtime_title')}</h2>
-          </header>
-          <dl className={styles.specList}>
-            {runtimeRows.map((row) => (
-              <div key={row.label} className={styles.specRow}>
-                <dt className={styles.specLabel}>{row.label}</dt>
-                <dd className={`${styles.specValue} ${row.mono ? styles.specMono : ''}`}>
-                  {row.value}
-                </dd>
-              </div>
-            ))}
-          </dl>
-          {runtimeToggles.length > 0 && (
-            <ul className={styles.toggleList}>
-              {runtimeToggles.map((toggle) => (
-                <li
-                  key={toggle.label}
-                  className={`${styles.togglePill} ${toggle.on ? styles.toggleOn : styles.toggleOff}`}
-                >
-                  {toggle.label}
-                  <b>{toggle.on ? t('common.yes') : t('common.no')}</b>
-                </li>
-              ))}
-            </ul>
-          )}
-          <Link to="/config" className={styles.panelLink}>
-            {t('dashboard.runtime_link')}{' '}
-            <span className={styles.linkArrow} aria-hidden="true">
-              →
-            </span>
-          </Link>
-        </div>
-      </section>
-
-      {/* ---------- CTA ---------- */}
-      <section className={styles.section} ref={ctaRef}>
-        <header className={styles.sectionHead} data-reveal>
-          <span className={styles.eyebrow}>{t('dashboard.cta_eyebrow')}</span>
-          <h2 className={styles.sectionTitle}>{t('dashboard.cta_title')}</h2>
-        </header>
-        <div className={styles.ctaGrid}>
-          {ctaCards.map((card) => (
-            <Link key={card.to} to={card.to} className={styles.ctaCard} data-reveal>
-              <span className={styles.ctaIcon}>{card.icon}</span>
-              <span className={styles.ctaTitle}>{card.title}</span>
-              <span className={styles.ctaDescription}>{card.description}</span>
-              <span className={styles.ctaArrow} aria-hidden="true">
-                →
-              </span>
-            </Link>
-          ))}
         </div>
       </section>
     </div>

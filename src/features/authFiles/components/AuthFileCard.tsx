@@ -5,14 +5,7 @@ import { Button } from '@/components/ui/Button';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { SelectionCheckbox } from '@/components/ui/SelectionCheckbox';
 import { ToggleSwitch } from '@/components/ui/ToggleSwitch';
-import {
-  IconDownload,
-  IconInfo,
-  IconModelCluster,
-  IconRefreshCw,
-  IconSettings,
-  IconTrash2,
-} from '@/components/ui/icons';
+import { IconInfo, IconModelCluster, IconRefreshCw } from '@/components/ui/icons';
 import { ProviderStatusBar } from '@/components/providers/ProviderStatusBar';
 import type { AuthFileItem } from '@/types';
 import { statusBarDataFromRecentRequests } from '@/utils/recentRequests';
@@ -34,11 +27,11 @@ import { resolveAuthFileQuotaType } from '@/features/authFiles/logic';
 import type { AuthFileStatusBarData } from '@/features/authFiles/hooks/useAuthFilesStatusBarCache';
 import { AuthFileQuotaSection } from '@/features/authFiles/components/AuthFileQuotaSection';
 import { AuthFileCooldownSection } from './AuthFileCooldownSection';
+import { OverflowMenu } from './OverflowMenu';
 import styles from './AuthFileCard.module.scss';
 
 export type AuthFileCardProps = {
   file: AuthFileItem;
-  compact: boolean;
   selected: boolean;
   resolvedTheme: ResolvedTheme;
   disableControls: boolean;
@@ -48,6 +41,8 @@ export type AuthFileCardProps = {
   cooldownResetting: Record<string, boolean>;
   quotaFilterType: AuthFileQuotaFilter;
   statusBarCache: Map<string, AuthFileStatusBarData>;
+  /** Email masking for the identity lines (display only; handlers keep the real name). */
+  displayNameFor: (name: string) => string;
   /** 首屏一次性级联入场的延迟；null/undefined 表示不做入场动画。 */
   entranceDelayMs?: number | null;
   onShowModels: (file: AuthFileItem) => void;
@@ -64,7 +59,6 @@ export function AuthFileCard(props: AuthFileCardProps) {
   const { t } = useTranslation();
   const {
     file,
-    compact,
     selected,
     resolvedTheme,
     disableControls,
@@ -74,6 +68,7 @@ export function AuthFileCard(props: AuthFileCardProps) {
     cooldownResetting,
     quotaFilterType,
     statusBarCache,
+    displayNameFor,
     entranceDelayMs,
     onShowModels,
     onDownload,
@@ -95,7 +90,7 @@ export function AuthFileCard(props: AuthFileCardProps) {
   const typeColor = getTypeColor(providerKey, resolvedTheme);
 
   const quotaType = resolveAuthFileQuotaType(file, quotaFilterType);
-  const showQuotaLayout = Boolean(quotaType) && !isRuntimeOnly && !compact;
+  const showQuotaLayout = Boolean(quotaType) && !isRuntimeOnly;
 
   const successCount = file.successCount ?? 0;
   const failureCount = file.failureCount ?? 0;
@@ -111,14 +106,19 @@ export function AuthFileCard(props: AuthFileCardProps) {
   const priorityValue = Number.isSafeInteger(file.priority) ? file.priority : undefined;
   const weightValue = Number.isSafeInteger(file.weight) ? file.weight : undefined;
   const noteValue = typeof file.note === 'string' ? file.note.trim() : '';
-  // 主行显示账号（email/项目 ID），文件名降为满卡宽的 mono 副行
-  const identity = deriveAuthFileIdentity(file);
+  // 主行显示账号（email/项目 ID），文件名降为满卡宽的 mono 副行；两者都按偏好做邮箱遮罩
+  const rawIdentity = deriveAuthFileIdentity(file);
+  const identity = {
+    kind: rawIdentity.kind,
+    primary: displayNameFor(rawIdentity.primary),
+    secondary: rawIdentity.secondary ? displayNameFor(rawIdentity.secondary) : null,
+    fullName: displayNameFor(rawIdentity.fullName),
+  };
 
   // 挂载时捕获一次入场延迟：父级随后传 null 也不会中断已开始的动画
   const [mountEntranceDelayMs] = useState<number | null>(entranceDelayMs ?? null);
   const cardClasses = [
     styles.card,
-    compact ? styles.cardCompact : '',
     selected ? styles.cardSelected : '',
     file.disabled === true ? styles.cardDisabled : '',
     mountEntranceDelayMs != null ? styles.cardEnter : '',
@@ -171,7 +171,7 @@ export function AuthFileCard(props: AuthFileCardProps) {
         </p>
       )}
 
-      {!compact && noteValue && (
+      {noteValue && (
         <p className={styles.note} title={noteValue}>
           {noteValue}
         </p>
@@ -264,56 +264,51 @@ export function AuthFileCard(props: AuthFileCardProps) {
               {t('auth_files.models_button')}
             </Button>
           )}
+          {showManualRefreshButton && (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => onManualRefresh(file)}
+              className={styles.iconButton}
+              title={t('auth_files.manual_refresh_button')}
+              aria-label={`${t('auth_files.manual_refresh_button')}: ${identity.primary}`}
+              disabled={
+                disableControls ||
+                file.disabled ||
+                statusUpdating[getAuthFileRefreshKey(file)] === true ||
+                isManualRefreshing
+              }
+            >
+              {isManualRefreshing ? <LoadingSpinner size={14} /> : <IconRefreshCw size={15} />}
+            </Button>
+          )}
           {!isRuntimeOnly && (
-            <div className={styles.utilityActions}>
-              {showManualRefreshButton && (
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => onManualRefresh(file)}
-                  className={styles.iconButton}
-                  title={t('auth_files.manual_refresh_button')}
-                  disabled={
-                    disableControls ||
-                    file.disabled ||
-                    statusUpdating[getAuthFileRefreshKey(file)] === true ||
-                    isManualRefreshing
-                  }
-                >
-                  {isManualRefreshing ? <LoadingSpinner size={14} /> : <IconRefreshCw size={15} />}
-                </Button>
-              )}
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => onDownload(file.name)}
-                className={styles.iconButton}
-                title={t('auth_files.download_button')}
-                disabled={disableControls}
-              >
-                <IconDownload size={15} />
-              </Button>
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => onOpenPrefixProxyEditor(file)}
-                className={styles.iconButton}
-                title={t('auth_files.prefix_proxy_button')}
-                disabled={disableControls || isManualRefreshing}
-              >
-                <IconSettings size={15} />
-              </Button>
-              <Button
-                variant="danger"
-                size="sm"
-                onClick={() => onDelete(file.name)}
-                className={styles.iconButton}
-                title={t('auth_files.delete_button')}
-                disabled={disableControls || deleting === file.name || isManualRefreshing}
-              >
-                {deleting === file.name ? <LoadingSpinner size={14} /> : <IconTrash2 size={15} />}
-              </Button>
-            </div>
+            <OverflowMenu
+              label={t('auth_files.row_actions_label', { name: identity.primary })}
+              disabled={disableControls}
+              align="left"
+              items={[
+                {
+                  key: 'download',
+                  label: t('auth_files.download_button'),
+                  onSelect: () => onDownload(file.name),
+                },
+                {
+                  key: 'details',
+                  label: t('auth_files.prefix_proxy_button'),
+                  onSelect: () => onOpenPrefixProxyEditor(file),
+                  disabled: isManualRefreshing,
+                },
+                {
+                  key: 'delete',
+                  label: t('auth_files.delete_button'),
+                  onSelect: () => onDelete(file.name),
+                  danger: true,
+                  disabled: isManualRefreshing,
+                  loading: deleting === file.name,
+                },
+              ]}
+            />
           )}
         </div>
         {!isRuntimeOnly && (

@@ -1,9 +1,9 @@
 import { parseLogLine } from '@/features/logs/model/logParsing';
 import {
-  resolveStatusGroup,
-  type ParsedLogLine,
+  matchesQuickFilter,
   type HttpMethod,
-  type StatusGroup,
+  type ParsedLogLine,
+  type QuickFilter,
 } from '@/features/logs/model/logTypes';
 import { MANAGEMENT_API_PREFIX } from '@/utils/constants';
 import type { LogBuffer } from './logBuffer';
@@ -45,20 +45,20 @@ export function searchLogEntries(
   });
 }
 
-export function filterLogEntries(
-  entries: LogEntry[],
-  filters: {
-    methods: Set<HttpMethod>;
-    statuses: Set<StatusGroup>;
-    paths: Set<string>;
-    level: string;
-  }
-): LogEntry[] {
+export interface LogEntryFilters {
+  methods: Set<HttpMethod>;
+  paths: Set<string>;
+  level: string;
+  requestId?: string;
+  quick?: QuickFilter;
+}
+
+export function filterLogEntries(entries: LogEntry[], filters: LogEntryFilters): LogEntry[] {
   return entries.filter((entry) => {
     if (filters.level && entry.level !== filters.level) return false;
+    if (filters.requestId && entry.requestId !== filters.requestId) return false;
+    if (filters.quick && !matchesQuickFilter(entry, filters.quick)) return false;
     if (filters.methods.size && (!entry.method || !filters.methods.has(entry.method))) return false;
-    const group = resolveStatusGroup(entry.statusCode);
-    if (filters.statuses.size && (!group || !filters.statuses.has(group))) return false;
     return !filters.paths.size || Boolean(entry.path && filters.paths.has(entry.path));
   });
 }

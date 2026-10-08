@@ -80,6 +80,8 @@ interface SponsorKeyEntryCardProps {
   usedProtocols: Set<SponsorProtocol>;
   canRemove: boolean;
   mutating: boolean;
+  /** Quick Start 把第一组的密钥/区域/用量检查提到主视图，卡片内不再重复 */
+  hideCredentialFields?: boolean;
   onChange: (entry: SponsorKeyEntryInput) => void;
   onRemove: () => void;
 }
@@ -311,6 +313,7 @@ function SponsorKeyEntryCard({
   usedProtocols,
   canRemove,
   mutating,
+  hideCredentialFields = false,
   onChange,
   onRemove,
 }: SponsorKeyEntryCardProps) {
@@ -449,7 +452,7 @@ function SponsorKeyEntryCard({
             <span className={styles.labelHint}>{t('providersPage.sponsor.protocolHint')}</span>
           </div>
 
-          {definition.baseUrlOptions.length > 1 ? (
+          {definition.baseUrlOptions.length > 1 && !hideCredentialFields ? (
             <div className={styles.field}>
               <span className={styles.label}>
                 {t('providersPage.sponsor.urlMode', { provider: definition.displayName })}
@@ -499,51 +502,53 @@ function SponsorKeyEntryCard({
             <span className={styles.sponsorProtocolUrl}>{endpointUrl}</span>
           </div>
 
-          <div className={styles.field}>
-            <label className={styles.label} htmlFor={`${formId}-group-${index}-api-key`}>
-              {t('providersPage.form.apiKey')}
-            </label>
-            <div className={styles.passwordField}>
-              <input
-                id={`${formId}-group-${index}-api-key`}
-                className={styles.passwordInput}
-                type={showApiKey ? 'text' : 'password'}
-                value={entry.apiKey}
-                onChange={(event) => updateEntry({ apiKey: event.target.value })}
-                autoComplete="new-password"
-                data-1p-ignore="true"
-                data-lpignore="true"
-                data-bwignore="true"
-                placeholder={
-                  mode === 'edit'
-                    ? t('providersPage.form.apiKeyEditPlaceholder')
-                    : t('providersPage.form.apiKeyCreatePlaceholder')
-                }
-                disabled={mutating}
-              />
-              <button
-                type="button"
-                className={styles.passwordToggle}
-                onClick={() => setShowApiKey((value) => !value)}
-                disabled={mutating}
-                aria-label={
-                  showApiKey
-                    ? t('providersPage.form.hideApiKey')
-                    : t('providersPage.form.showApiKey')
-                }
-                title={
-                  showApiKey
-                    ? t('providersPage.form.hideApiKey')
-                    : t('providersPage.form.showApiKey')
-                }
-              >
-                {showApiKey ? <IconEyeOff size={16} /> : <IconEye size={16} />}
-              </button>
+          {hideCredentialFields ? null : (
+            <div className={styles.field}>
+              <label className={styles.label} htmlFor={`${formId}-group-${index}-api-key`}>
+                {t('providersPage.form.apiKey')}
+              </label>
+              <div className={styles.passwordField}>
+                <input
+                  id={`${formId}-group-${index}-api-key`}
+                  className={styles.passwordInput}
+                  type={showApiKey ? 'text' : 'password'}
+                  value={entry.apiKey}
+                  onChange={(event) => updateEntry({ apiKey: event.target.value })}
+                  autoComplete="new-password"
+                  data-1p-ignore="true"
+                  data-lpignore="true"
+                  data-bwignore="true"
+                  placeholder={
+                    mode === 'edit'
+                      ? t('providersPage.form.apiKeyEditPlaceholder')
+                      : t('providersPage.form.apiKeyCreatePlaceholder')
+                  }
+                  disabled={mutating}
+                />
+                <button
+                  type="button"
+                  className={styles.passwordToggle}
+                  onClick={() => setShowApiKey((value) => !value)}
+                  disabled={mutating}
+                  aria-label={
+                    showApiKey
+                      ? t('providersPage.form.hideApiKey')
+                      : t('providersPage.form.showApiKey')
+                  }
+                  title={
+                    showApiKey
+                      ? t('providersPage.form.hideApiKey')
+                      : t('providersPage.form.showApiKey')
+                  }
+                >
+                  {showApiKey ? <IconEyeOff size={16} /> : <IconEye size={16} />}
+                </button>
+              </div>
+              <span className={styles.labelHint}>{t('providersPage.sponsor.apiKeyHint')}</span>
             </div>
-            <span className={styles.labelHint}>{t('providersPage.sponsor.apiKeyHint')}</span>
-          </div>
+          )}
 
-          {definition.supportsUsageCheck ? (
+          {definition.supportsUsageCheck && !hideCredentialFields ? (
             <div className={styles.sponsorUsageSection}>
               <button
                 type="button"
@@ -850,6 +855,11 @@ export function SponsorProviderForm({
   const formClassName = [styles.form, variant === 'quickStart' ? styles.quickStartForm : '']
     .filter(Boolean)
     .join(' ');
+  const [showPrimaryKey, setShowPrimaryKey] = useState(false);
+  const primaryEntry = variant === 'quickStart' ? entries[0] : undefined;
+  const primaryKeyLabel = showPrimaryKey
+    ? t('providersPage.form.hideApiKey')
+    : t('providersPage.form.showApiKey');
   const aggregationConflict =
     mode === 'edit'
       ? getSponsorAggregationConflict(getSponsorRaw(resource, definition.brand))
@@ -863,35 +873,134 @@ export function SponsorProviderForm({
     );
   }
 
+  const groupedKeys = (
+    <div className={styles.section}>
+      {variant !== 'quickStart' && (
+        <h3 className={styles.sectionTitle}>{t('providersPage.sponsor.groupedKeysTitle')}</h3>
+      )}
+      {entries.map((entry, index) => (
+        <SponsorKeyEntryCard
+          key={`${entry.protocol}-${index}`}
+          entry={entry}
+          index={index}
+          formId={formId}
+          mode={mode}
+          definition={definition}
+          usedProtocols={usedProtocols}
+          canRemove={mode === 'edit' || entries.length > 1}
+          mutating={mutating}
+          hideCredentialFields={variant === 'quickStart' && index === 0}
+          onChange={(nextEntry) => updateEntry(index, nextEntry)}
+          onRemove={() => removeEntry(index)}
+        />
+      ))}
+      <button
+        type="button"
+        className={styles.addBtn}
+        disabled={mutating || !missingProtocols.length}
+        onClick={addEntry}
+      >
+        <IconPlus size={12} />
+        <span>{t('providersPage.sponsor.addGroupedKey')}</span>
+      </button>
+    </div>
+  );
+
   return (
     <form id={formId} className={formClassName} onSubmit={handleSubmit} noValidate>
-      <div className={styles.section}>
-        <h3 className={styles.sectionTitle}>{t('providersPage.sponsor.groupedKeysTitle')}</h3>
-        {entries.map((entry, index) => (
-          <SponsorKeyEntryCard
-            key={`${entry.protocol}-${index}`}
-            entry={entry}
-            index={index}
-            formId={formId}
-            mode={mode}
-            definition={definition}
-            usedProtocols={usedProtocols}
-            canRemove={mode === 'edit' || entries.length > 1}
-            mutating={mutating}
-            onChange={(nextEntry) => updateEntry(index, nextEntry)}
-            onRemove={() => removeEntry(index)}
-          />
-        ))}
-        <button
-          type="button"
-          className={styles.addBtn}
-          disabled={mutating || !missingProtocols.length}
-          onClick={addEntry}
-        >
-          <IconPlus size={12} />
-          <span>{t('providersPage.sponsor.addGroupedKey')}</span>
-        </button>
-      </div>
+      {/* Quick Start 主视图：只有密钥与区域两件事；其余全部收进「高级」 */}
+      {primaryEntry ? (
+        <>
+          <div className={styles.field}>
+            <label className={styles.label} htmlFor={`${formId}-primary-api-key`}>
+              {t('providersPage.form.apiKey')}
+            </label>
+            <div className={styles.passwordField}>
+              <input
+                id={`${formId}-primary-api-key`}
+                className={styles.passwordInput}
+                type={showPrimaryKey ? 'text' : 'password'}
+                value={primaryEntry.apiKey}
+                onChange={(event) =>
+                  updateEntry(0, { ...primaryEntry, apiKey: event.target.value })
+                }
+                autoComplete="new-password"
+                data-1p-ignore="true"
+                data-lpignore="true"
+                data-bwignore="true"
+                placeholder={
+                  mode === 'edit'
+                    ? t('providersPage.form.apiKeyEditPlaceholder')
+                    : t('providersPage.form.apiKeyCreatePlaceholder')
+                }
+                disabled={mutating}
+              />
+              <button
+                type="button"
+                className={styles.passwordToggle}
+                onClick={() => setShowPrimaryKey((value) => !value)}
+                disabled={mutating}
+                aria-label={primaryKeyLabel}
+                title={primaryKeyLabel}
+              >
+                {showPrimaryKey ? <IconEyeOff size={16} /> : <IconEye size={16} />}
+              </button>
+            </div>
+          </div>
+
+          {definition.baseUrlOptions.length > 1 ? (
+            <div className={styles.field}>
+              <span className={styles.label}>{t('providersPage.sponsor.quickStart.region')}</span>
+              <div className={styles.sponsorUrlOptions} role="radiogroup">
+                {definition.baseUrlOptions.map((option, optionIndex) => {
+                  const checked =
+                    definition.resolveBaseUrl(primaryEntry.baseUrl) === option.baseUrl;
+                  return (
+                    <label
+                      key={option.id}
+                      className={[
+                        styles.sponsorUrlOption,
+                        checked ? styles.sponsorUrlOptionActive : '',
+                      ]
+                        .filter(Boolean)
+                        .join(' ')}
+                    >
+                      <input
+                        type="radio"
+                        name={`${formId}-primary-base-url`}
+                        value={option.baseUrl}
+                        checked={checked}
+                        onChange={() =>
+                          updateEntry(0, { ...primaryEntry, baseUrl: option.baseUrl })
+                        }
+                        disabled={mutating}
+                      />
+                      <span className={styles.sponsorUrlOptionText}>
+                        <span>
+                          {t(`providersPage.sponsor.urlOptions.${option.id}`)}
+                          {optionIndex === 0
+                            ? ` · ${t('providersPage.sponsor.quickStart.recommended')}`
+                            : ''}
+                        </span>
+                        <small>{option.baseUrl}</small>
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
+
+          <Collapsible
+            label={t('providersPage.sponsor.quickStart.advanced')}
+            hint={t('providersPage.sponsor.quickStart.advancedHint')}
+          >
+            {groupedKeys}
+          </Collapsible>
+        </>
+      ) : (
+        groupedKeys
+      )}
 
       {error ? <div className={styles.errorBox}>{error}</div> : null}
     </form>

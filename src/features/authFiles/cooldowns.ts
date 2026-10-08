@@ -29,6 +29,18 @@ export function cooldownRemainingSeconds(
   return Math.max(0, Math.ceil(record.remainingSeconds - elapsedMs / 1000));
 }
 
+/** At least one cooldown timer is still running (unknown or empty snapshots are not cooling). */
+export function isCoolingAuthFile(
+  file: { cooldownSnapshot?: AuthFileCooldownSnapshot },
+  nowMs: number
+): boolean {
+  const snapshot = file.cooldownSnapshot;
+  if (!snapshot?.records?.length) return false;
+  return snapshot.records.some(
+    (record) => cooldownRemainingSeconds(record, snapshot.receivedAtMs, nowMs) > 0
+  );
+}
+
 export function summarizeCooldowns(snapshot: AuthFileCooldownSnapshot, nowMs: number) {
   const rows = (snapshot.records ?? []).map((record) => ({
     record,

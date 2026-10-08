@@ -2,6 +2,8 @@ import { useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { ErrorBanner } from '@/components/ui/ErrorBanner';
+import { Skeleton } from '@/components/ui/Skeleton';
 import { ModelMappingDiagram, type ModelMappingDiagramRef } from '@/components/modelAlias';
 import { IconChevronUp } from '@/components/ui/icons';
 import type { OAuthModelAliasEntry } from '@/types';
@@ -80,7 +82,7 @@ export function OAuthModelAliasCard(props: OAuthModelAliasCardProps) {
             </Button>
           </div>
           <Button size="sm" onClick={onAdd} disabled={disableControls || modelAliasError !== null}>
-            {t('oauth_model_alias.add')}
+            {t('auth_files.add_alias_button')}
           </Button>
         </div>
       </header>
@@ -91,16 +93,13 @@ export function OAuthModelAliasCard(props: OAuthModelAliasCardProps) {
             description={t('oauth_model_alias.upgrade_required_desc')}
           />
         ) : modelAliasError === 'load' ? (
-          <EmptyState
-            title={t('notification.refresh_failed')}
-            action={
-              <Button variant="secondary" size="sm" onClick={() => void onRetry()}>
-                {t('common.refresh')}
-              </Button>
-            }
-          />
+          <ErrorBanner message={t('notification.refresh_failed')} onRetry={() => void onRetry()} />
         ) : modelAliasError === 'loading' ? (
-          <EmptyState title={t('common.loading')} />
+          <div className={styles.list} aria-busy="true">
+            {Array.from({ length: 3 }, (_, index) => (
+              <Skeleton key={index} height={48} rounded={10} />
+            ))}
+          </div>
         ) : viewMode === 'diagram' ? (
           Object.keys(modelAlias).length === 0 ? (
             <EmptyState title={t('oauth_model_alias.list_empty_all')} />
@@ -149,10 +148,20 @@ export function OAuthModelAliasCard(props: OAuthModelAliasCardProps) {
                   </div>
                 </div>
                 <div className={styles.itemActions}>
-                  <Button variant="secondary" size="sm" onClick={() => onEditProvider(provider)}>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => onEditProvider(provider)}
+                    aria-label={`${t('common.edit')}: ${provider}`}
+                  >
                     {t('common.edit')}
                   </Button>
-                  <Button variant="danger" size="sm" onClick={() => onDeleteProvider(provider)}>
+                  <Button
+                    variant="danger-quiet"
+                    size="sm"
+                    onClick={() => onDeleteProvider(provider)}
+                    aria-label={`${t('oauth_model_alias.delete')}: ${provider}`}
+                  >
                     {t('oauth_model_alias.delete')}
                   </Button>
                 </div>

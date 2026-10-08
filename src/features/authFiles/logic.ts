@@ -7,6 +7,7 @@ import type { AuthFileItem } from '@/types';
 import { resolveAuthProvider } from '@/utils/quota';
 import {
   QUOTA_PROVIDER_TYPES,
+  getAuthFileStatusKind,
   getAuthFileStatusMessage,
   normalizeProviderKey,
   type AuthFileQuotaFilter,
@@ -62,16 +63,55 @@ export const matchesAuthFileSearch = (
   });
 };
 
+export type AuthFilesSortContext = {
+  /** Clock for cooldown ranking in 'problems'; defaults to Date.now(). */
+  nowMs?: number;
+  /** Worst remaining quota percent per file (null = not loaded); needed by 'lowestQuota'. */
+  quotaPercentFor?: (file: AuthFileItem) => number | null;
+};
+
+const compareDefault = (a: AuthFileItem, b: AuthFileItem): number => {
+  const providerA = normalizeProviderKey(String(a.provider ?? a.type ?? 'unknown'));
+  const providerB = normalizeProviderKey(String(b.provider ?? b.type ?? 'unknown'));
+  return providerA.localeCompare(providerB) || a.name.localeCompare(b.name);
+};
+
+/** Problem files first, then cooling, then everything else (0 = most urgent). */
+const problemRank = (file: AuthFileItem, nowMs: number): number => {
+  const kind = getAuthFileStatusKind(file, nowMs);
+  if (kind === 'problem') return 0;
+  if (kind === 'cooling') return 1;
+  if (kind === 'active') return 2;
+  return 3;
+};
+
 /** 返回新数组，不改动入参。未知 mode 原序返回拷贝。 */
-export const sortAuthFiles = (files: AuthFileItem[], mode: AuthFilesSortMode): AuthFileItem[] => {
+export const sortAuthFiles = (
+  files: AuthFileItem[],
+  mode: AuthFilesSortMode,
+  context: AuthFilesSortContext = {}
+): AuthFileItem[] => {
   const copy = [...files];
   if (mode === 'default') {
+    copy.sort(compareDefault);
+  } else if (mode === 'problems') {
+    const nowMs = context.nowMs ?? Date.now();
+    const ranks = new Map(copy.map((file) => [file, problemRank(file, nowMs)]));
+    copy.sort((a, b) => (ranks.get(a) ?? 3) - (ranks.get(b) ?? 3) || compareDefault(a, b));
+  } else if (mode === 'mostUsed') {
+    const usage = (file: AuthFileItem) => (file.successCount ?? 0) + (file.failureCount ?? 0);
+    copy.sort((a, b) => usage(b) - usage(a) || compareDefault(a, b));
+  } else if (mode === 'lowestQuota') {
+    // Unknown quota sorts last; a loaded 0% is the most urgent.
+    const percentFor = context.quotaPercentFor ?? (() => null);
+    const percents = new Map(copy.map((file) => [file, percentFor(file)]));
     copy.sort((a, b) => {
-      const providerA = normalizeProviderKey(String(a.provider ?? a.type ?? 'unknown'));
-      const providerB = normalizeProviderKey(String(b.provider ?? b.type ?? 'unknown'));
-      const providerCompare = providerA.localeCompare(providerB);
-      if (providerCompare !== 0) return providerCompare;
-      return a.name.localeCompare(b.name);
+      const pa = percents.get(a) ?? null;
+      const pb = percents.get(b) ?? null;
+      if (pa === null && pb === null) return compareDefault(a, b);
+      if (pa === null) return 1;
+      if (pb === null) return -1;
+      return pa - pb || compareDefault(a, b);
     });
   } else if (mode === 'az') {
     // 按卡片主行排（有账号时即 email），所见即所排；同值用文件名决胜。

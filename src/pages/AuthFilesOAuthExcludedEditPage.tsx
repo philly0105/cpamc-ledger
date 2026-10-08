@@ -17,7 +17,11 @@ import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
 import { useAuthStore, useNotificationStore } from '@/stores';
 import { authFilesApi } from '@/services/api';
 import { buildOAuthProviderOptions, normalizeProviderKey } from '@/features/authFiles/constants';
-import { getStringSetSignature, isOAuthEditorDirty } from '@/features/authFiles/oauthEditorState';
+import {
+  getStringSetSignature,
+  isOAuthEditorDirty,
+  shouldIgnoreEditorEscape,
+} from '@/features/authFiles/oauthEditorState';
 import type { AuthFileItem, OAuthModelAliasEntry } from '@/types';
 import { getErrorMessage } from '@/utils/helpers';
 import styles from '@/features/authFiles/components/OAuthEditor.module.scss';
@@ -139,7 +143,7 @@ export function AuthFilesOAuthExcludedEditPage() {
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
+      if (event.key === 'Escape' && !shouldIgnoreEditorEscape(event)) {
         handleBack();
       }
     };

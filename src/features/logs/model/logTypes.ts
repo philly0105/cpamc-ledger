@@ -1,8 +1,9 @@
 export const HTTP_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD'] as const;
 export type HttpMethod = (typeof HTTP_METHODS)[number];
 
-export const STATUS_GROUPS = ['2xx', '3xx', '4xx', '5xx'] as const;
-export type StatusGroup = (typeof STATUS_GROUPS)[number];
+/** One-click failure filters. `errors` = level error/fatal or any status >= 400. */
+export const QUICK_FILTERS = ['all', 'errors', '4xx', '5xx'] as const;
+export type QuickFilter = (typeof QUICK_FILTERS)[number];
 
 export type LogLevel = 'trace' | 'debug' | 'info' | 'warn' | 'error' | 'fatal';
 
@@ -25,11 +26,23 @@ export type ParsedLogLine = {
   message: string;
 };
 
-export const resolveStatusGroup = (statusCode?: number): StatusGroup | undefined => {
-  if (typeof statusCode !== 'number') return undefined;
-  if (statusCode >= 200 && statusCode < 300) return '2xx';
-  if (statusCode >= 300 && statusCode < 400) return '3xx';
-  if (statusCode >= 400 && statusCode < 500) return '4xx';
-  if (statusCode >= 500 && statusCode < 600) return '5xx';
-  return undefined;
+export const isErrorLogLine = (line: Pick<ParsedLogLine, 'level' | 'statusCode'>): boolean =>
+  line.level === 'error' ||
+  line.level === 'fatal' ||
+  (typeof line.statusCode === 'number' && line.statusCode >= 400);
+
+export const matchesQuickFilter = (
+  line: Pick<ParsedLogLine, 'level' | 'statusCode'>,
+  filter: QuickFilter
+): boolean => {
+  switch (filter) {
+    case 'all':
+      return true;
+    case 'errors':
+      return isErrorLogLine(line);
+    case '4xx':
+      return typeof line.statusCode === 'number' && line.statusCode >= 400 && line.statusCode < 500;
+    case '5xx':
+      return typeof line.statusCode === 'number' && line.statusCode >= 500 && line.statusCode < 600;
+  }
 };

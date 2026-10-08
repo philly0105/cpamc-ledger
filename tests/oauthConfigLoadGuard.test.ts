@@ -23,7 +23,8 @@ describe('OAuth configuration load guards', () => {
     );
 
     expect(markup).toContain('disabled=""');
-    expect(markup).toContain('empty-action');
+    expect(markup).toContain('error-banner');
+    expect(markup).toContain('error-banner-retry');
   });
 
   test('disables model-alias writes and exposes retry after a load failure', () => {
@@ -48,6 +49,7 @@ describe('OAuth configuration load guards', () => {
     );
 
     expect(markup).toContain('disabled=""');
-    expect(markup).toContain('empty-action');
+    expect(markup).toContain('error-banner');
+    expect(markup).toContain('error-banner-retry');
   });
 });

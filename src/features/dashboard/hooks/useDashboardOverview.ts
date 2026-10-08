@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { authFilesApi } from '@/services/api';
-import { useAuthStore, useConfigStore, useModelsStore } from '@/stores';
-import { useApiKeysForModels } from '@/hooks/useApiKeysForModels';
+import { useAuthStore, useConfigStore } from '@/stores';
 import { useProviderRecentRequests } from '@/components/providers/hooks/useProviderRecentRequests';
+import { getErrorMessage } from '@/utils/helpers';
 import {
   mergeRecentRequestBucketGroups,
   normalizeRecentRequestUsageEntry,
@@ -15,6 +15,7 @@ import {
   type CredentialHealth,
   type DashboardCounts,
   type ProviderTraffic,
+  type SourceState,
   type TrafficWindow,
 } from '../types';
 
@@ -28,6 +29,8 @@ const EMPTY_TRAFFIC: TrafficWindow = {
   peakIndex: -1,
   windowMinutes: 0,
 };
+
+const IDLE_SOURCE: SourceState = { loading: false, error: null };
 
 /** `api-key-usage` 的键形如 `<baseUrl>|<apiKey>`，取第一个分隔符之后的部分 */
 const apiKeyFromCompositeKey = (compositeKey: string): string => {
@@ -79,6 +82,8 @@ const buildTrafficWindow = (bucketGroups: RecentRequestBucket[][]): TrafficWindo
 
 interface ProviderAccumulator {
   credentials: number;
+  /** 至少有一个凭证来自配置内联的 API Key（而非 auth 文件） */
+  hasApiKeys: boolean;
   success: number;
   failure: number;
   bucketGroups: RecentRequestBucket[][];
@@ -86,6 +91,7 @@ interface ProviderAccumulator {
 
 const createAccumulator = (): ProviderAccumulator => ({
   credentials: 0,
+  hasApiKeys: false,
   success: 0,
   failure: 0,
   bucketGroups: [],
@@ -108,63 +114,78 @@ export const getProviderKeyCounts = (config: Config) => ({
  * 流量数据有两个互不重叠的来源：`api-key-usage`（配置内联的 API Key 凭证）
  * 与 `auth-files`（文件/运行时凭证）。后端对二者的判定条件互斥，但插件提供的
  * 凭证理论上可同时命中，因此这里按 `account_type` + `account` 做一次防御性去重。
+ *
+ * 每个来源各自暴露 loading/error：失败的加载不得伪装成「空数据」。
  */
 export function useDashboardOverview() {
   const connectionStatus = useAuthStore((state) => state.connectionStatus);
-  const apiBase = useAuthStore((state) => state.apiBase);
   const config = useConfigStore((state) => state.config);
   const fetchConfig = useConfigStore((state) => state.fetchConfig);
 
-  const models = useModelsStore((state) => state.models);
-  const modelsLoading = useModelsStore((state) => state.loading);
-  const modelsError = useModelsStore((state) => state.error);
-  const fetchModelsFromStore = useModelsStore((state) => state.fetchModels);
-
   const connected = connectionStatus === 'connected';
-  const resolveApiKeysForModels = useApiKeysForModels();
 
-  const { usageByProvider, refreshRecentRequests } = useProviderRecentRequests({
-    enabled: connected,
-  });
+  const {
+    usageByProvider,
+    isLoading: usageLoading,
+    refreshRecentRequests,
+  } = useProviderRecentRequests({ enabled: connected });
 
   const [authFiles, setAuthFiles] = useState<AuthFileItem[] | null>(null);
+  const [authFilesSource, setAuthFilesSource] = useState<SourceState>(IDLE_SOURCE);
+  const [configSource, setConfigSource] = useState<SourceState>(IDLE_SOURCE);
+  const [updatedAt, setUpdatedAt] = useState<number | null>(null);
 
   const loadAuthFiles = useCallback(async () => {
     if (!connected) return;
+    setAuthFilesSource({ loading: true, error: null });
     try {
       const response = await authFilesApi.list();
       setAuthFiles(response.files);
-    } catch {
-      setAuthFiles(null);
+      setAuthFilesSource(IDLE_SOURCE);
+    } catch (err) {
+      setAuthFilesSource({ loading: false, error: getErrorMessage(err) });
     }
   }, [connected]);
 
-  const loadModels = useCallback(async () => {
-    if (!connected || !apiBase) return;
-    try {
-      const apiKeys = await resolveApiKeysForModels();
-      await fetchModelsFromStore(apiBase, apiKeys[0]);
-    } catch {
-      // 模型列表失败不应影响仪表盘其余部分
-    }
-  }, [connected, apiBase, resolveApiKeysForModels, fetchModelsFromStore]);
+  const loadConfig = useCallback(
+    async (force = false) => {
+      if (!connected) return;
+      setConfigSource({ loading: true, error: null });
+      try {
+        await fetchConfig(force);
+        setConfigSource(IDLE_SOURCE);
+      } catch (err) {
+        setConfigSource({ loading: false, error: getErrorMessage(err) });
+      }
+    },
+    [connected, fetchConfig]
+  );
 
   useEffect(() => {
     if (!connected) return;
-    void fetchConfig().catch(() => undefined);
+    void loadConfig();
     void loadAuthFiles();
-    void loadModels();
-  }, [connected, fetchConfig, loadAuthFiles, loadModels]);
+  }, [connected, loadConfig, loadAuthFiles]);
+
+  // 流量轮询由 useProviderRecentRequests 内部定时触发；这里只记录最近一次落地时间。
+  // 首次渲染时请求尚未发出（loading 仍为 false），所以要等「loading 回落」或缓存已有数据。
+  const wasLoading = useRef(false);
+  useEffect(() => {
+    if (usageLoading) {
+      wasLoading.current = true;
+      return;
+    }
+    if (wasLoading.current || usageByProvider.size > 0) {
+      wasLoading.current = false;
+      setUpdatedAt(Date.now());
+    }
+  }, [usageLoading, usageByProvider]);
 
   const refresh = useCallback(async () => {
     if (!connected) return;
-    await Promise.allSettled([
-      fetchConfig(true),
-      loadAuthFiles(),
-      loadModels(),
-      refreshRecentRequests(),
-    ]);
-  }, [connected, fetchConfig, loadAuthFiles, loadModels, refreshRecentRequests]);
+    await Promise.allSettled([loadConfig(true), loadAuthFiles(), refreshRecentRequests()]);
+    setUpdatedAt(Date.now());
+  }, [connected, loadConfig, loadAuthFiles, refreshRecentRequests]);
 
   const providerKeyCounts = useMemo(() => (config ? getProviderKeyCounts(config) : null), [config]);
 
@@ -183,6 +204,7 @@ export function useDashboardOverview() {
 
     usageByProvider.forEach((entriesByKey, providerId) => {
       const accumulator = accumulatorFor(providerId);
+      accumulator.hasApiKeys = true;
       entriesByKey.forEach((entry, compositeKey) => {
         const apiKey = apiKeyFromCompositeKey(compositeKey);
         if (apiKey) {
@@ -225,6 +247,7 @@ export function useDashboardOverview() {
         return {
           id,
           credentials: accumulator.credentials,
+          hasApiKeys: accumulator.hasApiKeys,
           success: accumulator.success,
           failure: accumulator.failure,
           total,
@@ -247,7 +270,6 @@ export function useDashboardOverview() {
 
     let disabled = 0;
     let unavailable = 0;
-    const countsByType = new Map<string, number>();
 
     authFiles.forEach((file) => {
       if (file.disabled) {
@@ -255,8 +277,6 @@ export function useDashboardOverview() {
       } else if (file.unavailable) {
         unavailable += 1;
       }
-      const type = providerIdOfAuthFile(file);
-      countsByType.set(type, (countsByType.get(type) ?? 0) + 1);
     });
 
     return {
@@ -264,9 +284,6 @@ export function useDashboardOverview() {
       active: authFiles.length - disabled - unavailable,
       disabled,
       unavailable,
-      byType: Array.from(countsByType.entries())
-        .map(([type, count]) => ({ type, count }))
-        .sort((a, b) => b.count - a.count || a.type.localeCompare(b.type)),
     };
   }, [authFiles]);
 
@@ -276,10 +293,8 @@ export function useDashboardOverview() {
       providerKeys: providerKeyCounts
         ? Object.values(providerKeyCounts).reduce((sum, count) => sum + count, 0)
         : null,
-      credentials: authFiles ? authFiles.length : null,
-      models: modelsLoading || modelsError ? null : models.length,
     }),
-    [config, providerKeyCounts, authFiles, models.length, modelsLoading, modelsError]
+    [config, providerKeyCounts]
   );
 
   return {
@@ -287,10 +302,17 @@ export function useDashboardOverview() {
     connected,
     config,
     counts,
-    providerKeyCounts,
     traffic,
     providers,
     credentials,
+    updatedAt,
+    sources: {
+      traffic: { loading: usageLoading && updatedAt === null, error: null },
+      authFiles: authFilesSource,
+      config: configSource,
+    },
+    retryAuthFiles: loadAuthFiles,
+    retryConfig: () => void loadConfig(true),
     refresh,
   };
 }

@@ -1,71 +1,112 @@
 @use '../../styles/mixins' as *;
 
+/* ============================================================
+ * Logs workspace: compact header, underline tabs, one toolbar row,
+ * chip row, and a single flexible scrolling viewer on a column grid.
+ * ============================================================ */
+
 .container {
-  --log-control-height: 40px;
   display: flex;
   flex: 1;
   flex-direction: column;
-  gap: 24px;
+  gap: 16px;
   min-width: 0;
   min-height: 0;
 }
 
-.pageHeader {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 12px 24px;
-  flex: none;
-}
-
-.pageTitle {
-  margin: 0;
-  color: var(--text-primary);
-  font-size: 28px;
-  line-height: 1.3;
-  font-weight: 700;
-  letter-spacing: -0.025em;
-}
-
-.tabBar {
-  display: inline-flex;
-  gap: 4px;
-  padding: 3px;
-  border-radius: 10px;
-  background: var(--bg-tertiary);
-}
-
-.tabItem {
+.metaButton {
   @include button-reset;
-  padding: 8px 14px;
-  border-radius: 7px;
-  color: var(--text-secondary);
-  font-size: 13px;
-  font-weight: 500;
+  font: inherit;
+  color: inherit;
   cursor: pointer;
+  border-radius: var(--radius-sm);
+
+  &:hover {
+    text-decoration: underline;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--primary-color);
+    outline-offset: 2px;
+  }
+}
+
+/* ---------- tabs ---------- */
+
+.tabs {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  min-width: 0;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.tab {
+  @include button-reset;
+  position: relative;
+  padding: 8px 12px 11px;
+  border-radius: 8px 8px 0 0;
+  font-size: 13px;
+  font-weight: 550;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  cursor: pointer;
+
+  &::after {
+    content: '';
+    position: absolute;
+    left: 10px;
+    right: 10px;
+    bottom: -1px;
+    height: 2px;
+    border-radius: 999px;
+    background: transparent;
+  }
+
+  &:hover {
+    color: var(--text-primary);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--primary-color);
+    outline-offset: -2px;
+  }
 }
 
 .tabActive {
-  background: var(--bg-primary);
   color: var(--text-primary);
-  box-shadow: 0 1px 3px var(--border-color);
+  font-weight: 650;
+
+  &::after {
+    background: var(--text-primary);
+  }
 }
 
-.container button:focus-visible,
-.structuredFilters button:focus-visible,
-.logPanel:focus-visible {
-  outline: 2px solid var(--primary-color);
-  outline-offset: -2px;
-}
+/* ---------- panels ---------- */
 
-.content,
-.viewerArea,
-.errorBody {
+.content {
+  position: relative;
   display: flex;
   flex: 1;
   flex-direction: column;
   min-width: 0;
   min-height: 0;
+}
+
+.panel {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* Hidden, not unmounted: the viewer keeps its scroll position across tab switches. */
+.panelHidden {
+  position: absolute;
+  inset: 0;
+  visibility: hidden;
+  pointer-events: none;
 }
 
 .logCard,
@@ -75,497 +116,12 @@
   flex-direction: column;
   min-width: 0;
   min-height: 0;
-  overflow: hidden;
   padding: 0;
-  border: 1px solid var(--border-color);
-  border-radius: 12px;
-  background: var(--bg-primary);
-  box-shadow: none;
 }
 
 .logCard {
   position: relative;
-
-  > :global(.error-box),
-  > :global(.status-badge) {
-    flex: none;
-    margin: 8px 12px;
-    max-height: 15vh;
-    overflow: auto;
-  }
-}
-
-.filters {
-  display: flex;
-  align-items: center;
-  flex: none;
-  flex-wrap: wrap;
-  gap: 12px;
-  padding: 16px;
-  border-bottom: 1px solid var(--border-color);
-
-  :global(.form-group) {
-    margin: 0;
-  }
-}
-
-.searchWrapper {
-  flex: 1 1 180px;
-  min-width: 120px;
-}
-
-.searchInput:global(.input),
-.levelSelect > button,
-.filterPanelToggle:global(.btn),
-.actionButton:global(.btn) {
-  box-sizing: border-box;
-  height: var(--log-control-height);
-  min-height: var(--log-control-height);
-  border-radius: 8px;
-  border: 1px solid var(--border-color);
-  background: var(--bg-primary);
-  font-size: 13px;
-  font-weight: 500;
-  line-height: 1;
-  box-shadow: none;
-}
-
-.searchInput:global(.input) {
-  padding: 0 38px 0 12px;
-}
-
-.levelSelect > button,
-.filterPanelToggle:global(.btn) {
-  padding: 0 12px;
-}
-
-.levelSelect {
-  min-width: 110px;
-}
-
-.searchIcon {
-  color: var(--text-tertiary);
-}
-
-.searchClear {
-  @include button-reset;
-  display: grid;
-  place-items: center;
-  width: 28px;
-  height: 28px;
-  color: var(--text-secondary);
-  cursor: pointer;
-}
-
-.filterPanelHeader {
-  display: flex;
-}
-.filterPanelToggle {
-  white-space: nowrap;
-}
-
-.filterPanelButtonContent,
-.buttonContent,
-.switchLabel {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  svg {
-    flex: none;
-  }
-}
-
-.filterPanelCount {
-  padding: 1px 6px;
-  border-radius: 5px;
-  background: var(--bg-tertiary);
-  color: var(--primary-color);
-  font-size: 11px;
-}
-
-.toolbar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-left: auto;
-  padding-left: 4px;
-  flex: none;
-}
-
-.actionButton:global(.btn) {
-  flex: none;
-  width: var(--log-control-height);
-  padding: 0;
-  > span {
-    display: flex;
-  }
-  &[aria-pressed='true'] {
-    color: var(--primary-color);
-    border-color: var(--primary-color);
-    background: color-mix(in srgb, var(--primary-color) 10%, var(--bg-primary));
-  }
-}
-
-.container :global(.btn) {
-  transition:
-    background-color 120ms ease,
-    border-color 120ms ease;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .container :global(.btn) {
-    transition: none;
-  }
-}
-
-.structuredFilters {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-  margin-bottom: 20px;
-}
-
-.displayOptions {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  padding-top: 16px;
-  border-top: 1px solid var(--border-color);
-}
-
-.filterChipGroup {
-  display: grid;
-  gap: 8px;
-}
-.filterChipLabel {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-secondary);
-}
-.filterChipList {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-.filterChipHint {
-  font-size: 12px;
-  color: var(--text-secondary);
-}
-.filterChip {
-  @include button-reset;
-  padding: 6px 10px;
-  border-radius: 6px;
-  border: 1px solid var(--border-color);
-  background: var(--bg-primary);
-  color: var(--text-secondary);
-  font-size: 12px;
-  cursor: pointer;
-  max-width: 100%;
-  overflow-wrap: anywhere;
-  &:disabled {
-    opacity: 0.45;
-    cursor: not-allowed;
-  }
-}
-.filterChipActive {
-  color: var(--primary-color);
-  border-color: var(--primary-color);
-  background: color-mix(in srgb, var(--primary-color) 8%, var(--bg-primary));
-}
-
-.viewerArea {
-  position: relative;
   overflow: hidden;
-  > :global(.hint) {
-    padding: 24px;
-  }
-}
-
-.logPanel {
-  flex: 1;
-  min-width: 0;
-  min-height: 0;
-  overflow: auto;
-  position: relative;
-  overscroll-behavior: contain;
-  scrollbar-gutter: stable;
-  background: var(--bg-primary);
-}
-
-.statusBar {
-  order: 3;
-  flex: none;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px 20px;
-  padding: 7px 12px;
-  border-top: 1px solid var(--border-color);
-  color: var(--text-secondary);
-  font-size: 11px;
-  line-height: 1.5;
-  font-variant-numeric: tabular-nums;
-  background: var(--bg-secondary);
-}
-.readStatus {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-.statusDot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--text-tertiary);
-  flex: none;
-}
-.readStatus[data-live='true'] .statusDot {
-  background: var(--success-color);
-}
-.bufferStatus {
-  text-align: right;
-}
-.notices {
-  flex: none;
-  max-height: 12vh;
-  overflow: auto;
-  padding: 6px 12px;
-  background: var(--danger-bg);
-  &:empty {
-    display: none;
-  }
-}
-.followButton {
-  position: absolute;
-  bottom: 48px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 2;
-  box-shadow: 0 2px 12px var(--border-color);
-  white-space: nowrap;
-}
-
-.loadMoreBanner {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 8px;
-  padding: 6px 12px;
-  border-bottom: 1px solid var(--border-color);
-  color: var(--text-secondary);
-  font-size: 11px;
-  background: var(--bg-secondary);
-}
-.loadMoreStats {
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-.loadMoreCount {
-  color: var(--text-secondary);
-}
-.logList {
-  padding-block: 8px;
-  width: max-content;
-  min-width: 100%;
-}
-
-.wrapped {
-  .logList {
-    width: auto;
-  }
-  .rowMain {
-    flex-wrap: wrap;
-    white-space: normal;
-  }
-  .rawLog {
-    white-space: pre-wrap;
-    overflow-wrap: anywhere;
-  }
-  .copyButton:global(.btn) {
-    position: absolute;
-    top: 2px;
-    right: 4px;
-  }
-  .logRow {
-    padding-right: 36px;
-  }
-}
-.rawLog,
-.logRow,
-.errorLogContent {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 12px;
-  line-height: 1.65;
-  font-variant-numeric: tabular-nums;
-}
-.rawLog {
-  margin: 0;
-  padding: 8px 12px;
-  white-space: pre;
-  color: var(--text-primary);
-}
-.logRow {
-  position: relative;
-  display: grid;
-  grid-template-columns: 160px minmax(0, 1fr);
-  gap: 16px;
-  padding: 4px 12px 4px 16px;
-  border-left: 2px solid transparent;
-  color: var(--text-primary);
-  &:nth-child(even) {
-    background: color-mix(in srgb, var(--bg-secondary) 20%, transparent);
-  }
-}
-.rowWarn {
-  border-left-color: var(--danger-color);
-}
-.rowError {
-  border-left-color: var(--error-color);
-}
-.timestamp {
-  color: var(--text-secondary);
-  white-space: nowrap;
-  padding-top: 2px;
-}
-.rowMain {
-  display: flex;
-  flex-wrap: nowrap;
-  white-space: nowrap;
-  align-items: center;
-  gap: 3px 8px;
-  min-width: 0;
-}
-.badge,
-.pill {
-  display: inline-flex;
-  align-items: center;
-  white-space: nowrap;
-  font-size: 11px;
-  line-height: 20px;
-}
-.badge {
-  padding: 0 5px;
-  border-radius: 4px;
-  font-weight: 600;
-}
-.pill {
-  color: var(--text-secondary);
-}
-.source {
-  color: var(--text-secondary);
-  max-width: 220px;
-  @include text-ellipsis;
-}
-.requestIdBadge {
-  font-family: inherit;
-  color: var(--primary-color);
-  background: transparent;
-  border: 1px solid var(--border-color);
-  cursor: pointer;
-}
-.statusSuccess {
-  color: var(--success-badge-text);
-  background: var(--success-badge-bg);
-}
-.statusInfo,
-.levelInfo {
-  color: var(--info-color);
-  background: color-mix(in srgb, var(--info-color) 8%, transparent);
-}
-.statusWarn,
-.levelWarn {
-  color: var(--danger-text);
-  background: var(--danger-bg);
-}
-.statusError,
-.levelError {
-  color: var(--failure-badge-text);
-  background: var(--failure-badge-bg);
-}
-.levelDebug,
-.levelTrace {
-  color: var(--text-secondary);
-  background: var(--bg-secondary);
-}
-.statusBadge {
-  font-variant-numeric: tabular-nums;
-}
-.methodBadge {
-  color: var(--text-primary);
-}
-.path {
-  font-weight: 600;
-  overflow-wrap: anywhere;
-}
-.message {
-  color: var(--text-primary);
-  overflow-wrap: anywhere;
-  min-width: 0;
-}
-.copyButton:global(.btn) {
-  position: sticky;
-  right: 4px;
-  flex: none;
-  margin-left: auto;
-  background: var(--bg-primary);
-  padding: 0;
-  width: 24px;
-  height: 24px;
-  color: var(--text-secondary);
-  > span {
-    display: flex;
-  }
-}
-
-.errorCard {
-  padding: 16px;
-}
-.errorBody {
-  gap: 12px;
-}
-.errorPanel {
-  flex: 1;
-  min-height: 0;
-  overflow: auto;
-  overscroll-behavior: contain;
-  :global(.item-meta) {
-    flex: 1 1 240px;
-    min-width: 0;
-  }
-  :global(.item-title) {
-    overflow-wrap: anywhere;
-    font-family: ui-monospace, monospace;
-    font-size: 13px;
-  }
-  :global(.item-actions) {
-    flex-wrap: wrap;
-  }
-}
-.errorLogViewer {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  min-height: 0;
-}
-.errorLogViewerMeta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 16px;
-  color: var(--text-secondary);
-  font-size: 12px;
-}
-.errorLogContent {
-  margin: 0;
-  padding: 12px;
-  max-height: 58dvh;
-  overflow: auto;
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
-  background: var(--bg-secondary);
-  color: var(--text-primary);
-  white-space: pre;
 }
 
 .logCardFullscreen {
@@ -579,107 +135,912 @@
   padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom)
     env(safe-area-inset-left);
 }
-:global(body.logs-fullscreen-active) :global(.page-transition__layer) {
-  transform: none !important;
+
+.errorCard {
+  padding: 16px 20px;
 }
-.logPanelFullscreen {
+
+.errorPanel {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
   min-height: 0;
 }
 
-@media (hover: hover) and (pointer: fine) {
-  .logRow:hover {
-    background: color-mix(in srgb, var(--primary-color) 5%, var(--bg-primary));
-  }
-  .copyButton {
-    opacity: 0;
-  }
-  .logRow:hover .copyButton,
-  .logRow:focus-within .copyButton {
-    opacity: 1;
-  }
-  .tabItem:hover {
+/* ---------- toolbar ---------- */
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.toolbarSpacer {
+  flex: 1 1 0;
+}
+
+.searchGroup {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 200px;
+  min-width: 200px;
+  max-width: 360px;
+}
+
+.search {
+  flex: 1;
+  min-width: 0;
+}
+
+.matchCount {
+  flex-shrink: 0;
+  font-family: $font-mono;
+  font-size: var(--fs-meta);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+}
+
+.segment {
+  display: inline-flex;
+  padding: 2px;
+  border-radius: 999px;
+  background: var(--bg-tertiary);
+}
+
+.segmentItem {
+  @include button-reset;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 550;
+  color: var(--text-secondary);
+  cursor: pointer;
+  white-space: nowrap;
+
+  &:hover {
     color: var(--text-primary);
   }
-  .filterChip:hover:not(:disabled) {
-    border-color: var(--primary-color);
+
+  &:focus-visible {
+    outline: 2px solid var(--primary-color);
+    outline-offset: -2px;
   }
 }
 
-@media (min-width: 769px) and (max-width: 1100px) {
-  .filterPanelLabel {
-    display: none;
-  }
-  .searchWrapper {
-    flex-basis: 120px;
+.segmentActive {
+  color: var(--text-primary);
+  background: var(--bg-primary);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.08);
+}
+
+.segmentCount {
+  font-family: $font-mono;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-tertiary);
+
+  .segmentActive & {
+    color: var(--text-secondary);
   }
 }
 
-@media (max-width: 768px) {
+.popover {
+  position: relative;
+}
+
+.popoverBadge {
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  font-family: $font-mono;
+  font-size: 11px;
+  line-height: 18px;
+  text-align: center;
+  color: var(--primary-color);
+  background: color-mix(in srgb, var(--primary-color) 14%, transparent);
+}
+
+.popoverPanel {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 240px;
+  max-width: min(420px, calc(100vw - 32px));
+  padding: 12px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  background: var(--bg-primary);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.12);
+
+  &[role='menu'] {
+    gap: 2px;
+    min-width: 220px;
+    padding: 6px;
+  }
+}
+
+.popoverEnd {
+  left: auto;
+  right: 0;
+}
+
+.filterGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.filterLabel {
+  font-size: var(--fs-meta);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.filterChipList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.filterChip {
+  @include button-reset;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  height: 26px;
+  padding: 0 9px;
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  font-family: $font-mono;
+  font-size: 12px;
+  color: var(--text-secondary);
+  background: var(--bg-primary);
+  cursor: pointer;
+
+  &:hover:not(:disabled) {
+    border-color: var(--border-hover);
+    color: var(--text-primary);
+  }
+
+  &:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--primary-color);
+    outline-offset: 1px;
+  }
+}
+
+.filterChipActive {
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+  background: color-mix(in srgb, var(--primary-color) 10%, transparent);
+}
+
+.filterChipPath {
+  min-width: 0;
+  max-width: 260px;
+  @include text-ellipsis;
+}
+
+.filterChipCount {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-tertiary);
+}
+
+.filterHint {
+  font-size: var(--fs-meta);
+  color: var(--text-tertiary);
+}
+
+.viewOptions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.menuItem {
+  @include button-reset;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 10px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  color: var(--text-primary);
+  text-align: left;
+  cursor: pointer;
+
+  &:hover:not(:disabled),
+  &:focus-visible {
+    background: var(--bg-tertiary);
+    outline: none;
+  }
+
+  &:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+}
+
+.menuItemDanger {
+  color: var(--danger-text);
+
+  &:hover:not(:disabled),
+  &:focus-visible {
+    background: var(--danger-bg);
+  }
+}
+
+.menuSeparator {
+  height: 1px;
+  margin: 4px 0;
+  background: var(--border-color);
+}
+
+/* Live / Paused / Retrying pill driven by request health. */
+.livePill {
+  @include button-reset;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 32px;
+  padding: 0 12px 0 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 550;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+  background: var(--bg-primary);
+  cursor: pointer;
+  white-space: nowrap;
+
+  &:hover:not(:disabled) {
+    border-color: var(--border-hover);
+  }
+
+  &:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--primary-color);
+    outline-offset: 1px;
+  }
+}
+
+.liveDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-quaternary);
+}
+
+.liveLive {
+  color: var(--success-text);
+
+  .liveDot {
+    background: var(--viz-success);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--viz-success) 25%, transparent);
+  }
+}
+
+.liveCatchingUp {
+  color: var(--text-primary);
+
+  .liveDot {
+    background: var(--info-color);
+  }
+}
+
+.liveRetrying {
+  color: var(--warning-text);
+
+  .liveDot {
+    background: var(--amber-color);
+  }
+}
+
+.livePaused .liveDot {
+  background: var(--text-quaternary);
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ---------- active filter chips ---------- */
+
+.chipRow {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  max-width: 100%;
+  height: 24px;
+  padding: 0 4px 0 9px;
+  border-radius: 999px;
+  font-family: $font-mono;
+  font-size: 12px;
+  color: var(--text-primary);
+  background: var(--bg-tertiary);
+}
+
+.chipLabel {
+  min-width: 0;
+  max-width: 320px;
+  @include text-ellipsis;
+}
+
+.chipRemove {
+  @include button-reset;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  color: var(--text-tertiary);
+  cursor: pointer;
+
+  &:hover {
+    color: var(--text-primary);
+    background: var(--bg-primary);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--primary-color);
+  }
+}
+
+.chipClearAll {
+  @include button-reset;
+  padding: 0 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  cursor: pointer;
+
+  &:hover {
+    color: var(--text-primary);
+    text-decoration: underline;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--primary-color);
+    outline-offset: 2px;
+  }
+}
+
+/* ---------- viewer ---------- */
+
+.viewerArea {
+  position: relative;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+
+  > :global(.empty-state) {
+    flex: 1;
+  }
+}
+
+/* Banners float above the first rows instead of pushing the viewer down. */
+.overlays {
+  position: absolute;
+  top: 8px;
+  left: 12px;
+  right: 12px;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  pointer-events: none;
+
+  > * {
+    pointer-events: auto;
+  }
+
+  > :global(.error-banner) {
+    margin: 0;
+    box-shadow: 0 4px 16px rgb(0 0 0 / 0.1);
+  }
+}
+
+.retryHint {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+}
+
+.notice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px 6px 12px;
+  border: 1px solid var(--warning-border);
+  border-radius: var(--radius-md);
+  font-size: var(--fs-meta);
+  color: var(--text-primary);
+  background: var(--warning-bg);
+  box-shadow: 0 4px 16px rgb(0 0 0 / 0.1);
+
+  > span {
+    flex: 1;
+  }
+}
+
+.noticeClose {
+  @include button-reset;
+  display: inline-flex;
+  padding: 3px;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+
+  &:hover {
+    color: var(--text-primary);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--primary-color);
+  }
+}
+
+.followButton:global(.btn) {
+  position: absolute;
+  bottom: 12px;
+  left: 50%;
+  z-index: 2;
+  transform: translateX(-50%);
+  box-shadow: 0 2px 12px var(--border-color);
+  white-space: nowrap;
+}
+
+.skeletonRows {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px 12px;
+}
+
+.logPanel {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  position: relative;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  background: var(--bg-primary);
+
+  &:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: -2px;
+  }
+}
+
+.loadMoreBanner {
+  position: sticky;
+  top: 0;
+  left: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--bg-primary);
+}
+
+.loadMoreStats {
+  font-family: $font-mono;
+  font-size: var(--fs-meta);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-tertiary);
+}
+
+.rawLog {
+  margin: 0;
+  padding: 8px 12px;
+  font-family: $font-mono;
+  font-size: 12px;
+  line-height: 1.65;
+  font-variant-numeric: tabular-nums;
+  white-space: pre;
+  color: var(--text-primary);
+}
+
+.rawLine {
+  display: block;
+}
+
+/* Column grid: time | level | status | method | path | latency | request id | actions.
+ * `max-content` keeps paths on one line and lets the viewer scroll horizontally. */
+.logList {
+  display: grid;
+  grid-template-columns:
+    max-content max-content max-content max-content minmax(max-content, 1fr)
+    max-content max-content max-content;
+  width: max-content;
+  min-width: 100%;
+  font-family: $font-mono;
+  font-size: 12px;
+  line-height: 1.5;
+  font-variant-numeric: tabular-nums;
+}
+
+.daySeparator {
+  grid-column: 1 / -1;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 3px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--text-tertiary);
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.logRow {
+  display: grid;
+  grid-template-columns: subgrid;
+  grid-column: 1 / -1;
+  align-items: baseline;
+  column-gap: 10px;
+  padding: 3px 0 3px 12px;
+  border-left: 3px solid transparent;
+  color: var(--text-primary);
+
+  &:hover,
+  &:focus-within {
+    background: var(--bg-secondary);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: -2px;
+  }
+}
+
+.rowWarn {
+  border-left-color: var(--amber-color);
+  background: color-mix(in srgb, var(--amber-color) 6%, transparent);
+}
+
+.rowError {
+  border-left-color: var(--viz-failure);
+  background: color-mix(in srgb, var(--viz-failure) 7%, transparent);
+}
+
+.cellTime {
+  color: var(--text-tertiary);
+  white-space: nowrap;
+}
+
+.cellLevel {
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.levelBadge {
+  display: inline-block;
+  padding: 0 5px;
+  border-radius: var(--radius-sm);
+  font-size: 10.5px;
+  font-weight: 650;
+  line-height: 16px;
+  letter-spacing: 0.03em;
+}
+
+.levelWarn {
+  color: var(--warning-text);
+  background: color-mix(in srgb, var(--amber-color) 16%, transparent);
+}
+
+.levelError {
+  color: var(--danger-text);
+  background: color-mix(in srgb, var(--viz-failure) 16%, transparent);
+}
+
+.levelDim {
+  font-size: 10.5px;
+  color: var(--text-quaternary);
+}
+
+.cellStatus {
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.status2xx {
+  color: var(--success-text);
+}
+
+.status3xx {
+  color: var(--info-color);
+}
+
+.status4xx {
+  color: var(--warning-text);
+}
+
+.status5xx {
+  color: var(--danger-text);
+}
+
+.cellMethod {
+  font-weight: 600;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.cellPath,
+.cellMessage {
+  min-width: 0;
+  white-space: pre;
+}
+
+/* Free-text lines span the request columns. */
+.cellMessage {
+  grid-column: 3 / 7;
+}
+
+.inlineMessage {
+  color: var(--text-secondary);
+}
+
+.cellLatency {
+  color: var(--text-tertiary);
+  white-space: nowrap;
+  text-align: right;
+}
+
+.cellRequest {
+  white-space: nowrap;
+}
+
+.requestId {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.requestIdChip {
+  @include button-reset;
+  padding: 0 5px;
+  border-radius: var(--radius-sm);
+  font: inherit;
+  color: var(--primary-color);
+  background: color-mix(in srgb, var(--primary-color) 10%, transparent);
+  cursor: pointer;
+
+  &:hover {
+    background: color-mix(in srgb, var(--primary-color) 18%, transparent);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--primary-color);
+    outline-offset: 1px;
+  }
+}
+
+.requestIdAction {
+  @include button-reset;
+  display: inline-flex;
+  align-items: center;
+  padding: 2px;
+  border-radius: var(--radius-sm);
+  color: var(--text-quaternary);
+  cursor: pointer;
+  opacity: 0;
+
+  .logRow:hover &,
+  .logRow:focus-within &,
+  &:focus-visible {
+    opacity: 1;
+  }
+
+  &:hover {
+    color: var(--text-primary);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--primary-color);
+  }
+}
+
+.cellActions {
+  position: sticky;
+  right: 0;
+  display: flex;
+  justify-content: flex-end;
+  padding: 0 6px 0 2px;
+  background: inherit;
+}
+
+.copyButton:global(.btn) {
+  opacity: 0;
+
+  .logRow:hover &,
+  .logRow:focus-within &,
+  &:focus-visible {
+    opacity: 1;
+  }
+}
+
+.hit {
+  padding: 0 1px;
+  border-radius: 2px;
+  color: inherit;
+  background: color-mix(in srgb, var(--amber-color) 38%, transparent);
+}
+
+/* Wrap mode: the path column shrinks and long values break instead of scrolling. */
+.wrapped {
+  .logList {
+    width: auto;
+    grid-template-columns:
+      max-content max-content max-content max-content minmax(0, 1fr)
+      max-content max-content max-content;
+  }
+
+  .cellPath,
+  .cellMessage {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
+  .rawLog {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+}
+
+/* ---------- footer ---------- */
+
+.statusBar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  padding: 6px 12px;
+  border-top: 1px solid var(--border-color);
+  font-family: $font-mono;
+  font-size: var(--fs-meta);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-tertiary);
+}
+
+/* ---------- error log viewer modal ---------- */
+
+.errorLogViewer {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+}
+
+.errorLogViewerMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  font-family: $font-mono;
+  font-size: var(--fs-meta);
+  color: var(--text-secondary);
+}
+
+.errorLogContent {
+  margin: 0;
+  padding: 12px;
+  max-height: 58dvh;
+  overflow: auto;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-family: $font-mono;
+  font-size: 12px;
+  line-height: 1.65;
+  font-variant-numeric: tabular-nums;
+  white-space: pre;
+}
+
+/* ---------- responsive ---------- */
+
+@media (max-width: 900px) {
+  .searchGroup {
+    flex: 1 1 100%;
+    order: -1;
+  }
+}
+
+@media (max-width: #{$breakpoint-mobile}) {
   .container {
-    --log-control-height: 36px;
-    gap: 16px;
+    gap: 12px;
   }
-  .pageHeader {
-    gap: 8px 12px;
-  }
-  .pageTitle {
-    font-size: 18px;
-  }
-  .tabItem {
-    padding: 6px 8px;
-    font-size: 12px;
-  }
-  .filters {
-    padding: 12px;
-    gap: 8px;
-  }
-  .searchWrapper {
-    flex-basis: calc(100% - 200px);
-  }
+
   .toolbar {
-    gap: 4px;
-    padding-left: 0;
+    padding: 8px;
   }
-  .wrapped .logRow {
-    grid-template-columns: 1fr;
-    gap: 0;
-    padding: 5px 32px 5px 8px;
-  }
-  .wrapped .timestamp {
-    font-size: 10px;
-  }
-  .statusBar {
-    gap: 4px;
-    padding: 6px 8px;
-    flex-wrap: wrap;
-    font-size: 10px;
-  }
-  .readStatus {
-    flex-wrap: wrap;
-  }
-  .bufferStatus {
-    text-align: left;
-  }
+
   .errorCard {
     padding: 12px;
   }
-}
 
-@media (max-height: 480px) {
-  .container {
-    --log-control-height: 36px;
-    gap: 12px;
+  /* Wrapped by default on phones: time on its own line, content below. */
+  .logList,
+  .wrapped .logList {
+    display: block;
+    width: auto;
   }
-  .pageHeader {
-    gap: 8px;
+
+  .logRow {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 2px 8px;
+    padding: 5px 8px 5px 10px;
   }
-  .pageTitle {
-    font-size: 18px;
+
+  .cellTime {
+    flex: 1 1 100%;
+    font-size: 10.5px;
   }
-  .statusBar {
-    padding-block: 3px;
+
+  .cellPath,
+  .cellMessage {
+    flex: 1 1 100%;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
   }
-  .filters {
-    padding-block: 4px;
+
+  .cellActions {
+    position: static;
+    margin-left: auto;
+  }
+
+  .requestIdAction,
+  .copyButton:global(.btn) {
+    opacity: 1;
   }
 }

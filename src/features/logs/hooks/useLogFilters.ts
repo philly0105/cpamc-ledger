@@ -1,7 +1,6 @@
 import { useMemo } from 'react';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
-import type { HttpMethod, ParsedLogLine, StatusGroup } from '../model/logTypes';
-import { resolveStatusGroup } from '../model/logTypes';
+import type { HttpMethod, ParsedLogLine } from '../model/logTypes';
 
 const PATH_FILTER_LIMIT = 12;
 
@@ -11,30 +10,23 @@ interface UseLogFiltersOptions {
 
 interface UseLogFiltersReturn {
   methodFilters: HttpMethod[];
-  statusFilters: StatusGroup[];
   pathFilters: string[];
   methodFilterSet: Set<HttpMethod>;
-  statusFilterSet: Set<StatusGroup>;
   pathFilterSet: Set<string>;
   hasStructuredFilters: boolean;
   methodCounts: Partial<Record<HttpMethod, number>>;
-  statusCounts: Partial<Record<StatusGroup, number>>;
   pathOptions: Array<{ path: string; count: number }>;
   toggleMethodFilter: (method: HttpMethod) => void;
-  toggleStatusFilter: (group: StatusGroup) => void;
   togglePathFilter: (path: string) => void;
   clearStructuredFilters: () => void;
 }
 
+/** Method and path filters (persisted). Status lives in the quick-filter segment. */
 export function useLogFilters(options: UseLogFiltersOptions): UseLogFiltersReturn {
   const { parsedLines } = options;
 
   const [methodFilters, setMethodFilters] = useLocalStorage<HttpMethod[]>(
     'logsPage.methodFilters',
-    []
-  );
-  const [statusFilters, setStatusFilters] = useLocalStorage<StatusGroup[]>(
-    'logsPage.statusFilters',
     []
   );
   const [storedPathFilters, setPathFilters] = useLocalStorage<string[]>('logsPage.pathFilters', []);
@@ -44,26 +36,14 @@ export function useLogFilters(options: UseLogFiltersOptions): UseLogFiltersRetur
   );
 
   const methodFilterSet = useMemo(() => new Set(methodFilters), [methodFilters]);
-  const statusFilterSet = useMemo(() => new Set(statusFilters), [statusFilters]);
   const pathFilterSet = useMemo(() => new Set(pathFilters), [pathFilters]);
-  const hasStructuredFilters =
-    methodFilters.length > 0 || statusFilters.length > 0 || pathFilters.length > 0;
+  const hasStructuredFilters = methodFilters.length > 0 || pathFilters.length > 0;
 
   const methodCounts = useMemo(() => {
     const counts: Partial<Record<HttpMethod, number>> = {};
     parsedLines.forEach((line) => {
       if (!line.method) return;
       counts[line.method] = (counts[line.method] ?? 0) + 1;
-    });
-    return counts;
-  }, [parsedLines]);
-
-  const statusCounts = useMemo(() => {
-    const counts: Partial<Record<StatusGroup, number>> = {};
-    parsedLines.forEach((line) => {
-      const statusGroup = resolveStatusGroup(line.statusCode);
-      if (!statusGroup) return;
-      counts[statusGroup] = (counts[statusGroup] ?? 0) + 1;
     });
     return counts;
   }, [parsedLines]);
@@ -79,12 +59,6 @@ export function useLogFilters(options: UseLogFiltersOptions): UseLogFiltersRetur
     );
   };
 
-  const toggleStatusFilter = (group: StatusGroup) => {
-    setStatusFilters((prev) =>
-      prev.includes(group) ? prev.filter((item) => item !== group) : [...prev, group]
-    );
-  };
-
   const togglePathFilter = (path: string) => {
     setPathFilters((stored) => {
       const prev = normalizeLogPathFilters(stored);
@@ -94,23 +68,18 @@ export function useLogFilters(options: UseLogFiltersOptions): UseLogFiltersRetur
 
   const clearStructuredFilters = () => {
     setMethodFilters([]);
-    setStatusFilters([]);
     setPathFilters([]);
   };
 
   return {
     methodFilters,
-    statusFilters,
     pathFilters,
     methodFilterSet,
-    statusFilterSet,
     pathFilterSet,
     hasStructuredFilters,
     methodCounts,
-    statusCounts,
     pathOptions,
     toggleMethodFilter,
-    toggleStatusFilter,
     togglePathFilter,
     clearStructuredFilters,
   };

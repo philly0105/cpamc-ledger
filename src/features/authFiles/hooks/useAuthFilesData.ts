@@ -10,22 +10,13 @@ import { formatFileSize } from '@/utils/format';
 import { MAX_AUTH_FILE_SIZE } from '@/utils/constants';
 import { downloadBlob } from '@/utils/download';
 import {
-  getTypeLabel,
-  isProblemAuthFile,
   isRuntimeOnlyAuthFile,
-  normalizeProviderKey,
   supportsAuthFileManualRefresh,
 } from '@/features/authFiles/constants';
 
-type DeleteAllOptions = {
-  filter: string;
-  problemOnly: boolean;
-  disabledOnly: boolean;
-  enabledOnly: boolean;
-  onResetFilterToAll: () => void;
-  onResetProblemOnly: () => void;
-  onResetDisabledOnly: () => void;
-  onResetEnabledOnly: () => void;
+export type AuthFilesDeleteRequest = {
+  files: AuthFileItem[];
+  mode: 'single' | 'filtered' | 'batch';
 };
 
 export type LoadFilesOptions = {
@@ -61,7 +52,12 @@ export type UseAuthFilesDataResult = {
   handleUploadClick: () => void;
   handleFileChange: (event: ChangeEvent<HTMLInputElement>) => Promise<void>;
   handleDelete: (name: string) => void;
-  handleDeleteAll: (options: DeleteAllOptions) => void;
+  /** Opens the delete confirmation for the given (already filtered) list. */
+  handleDeleteAll: (filesToDelete: AuthFileItem[]) => void;
+  deleteRequest: AuthFilesDeleteRequest | null;
+  cancelDeleteRequest: () => void;
+  /** Rejects on API failure so the confirm dialog can show the error inline. */
+  confirmDeleteRequest: () => Promise<void>;
   handleDownload: (name: string) => Promise<void>;
   handleManualRefresh: (item: AuthFileItem) => Promise<void>;
   handleCooldownReset: (item: AuthFileItem) => void;
@@ -319,187 +315,77 @@ export function useAuthFilesData(options?: UseAuthFilesDataOptions): UseAuthFile
     [loadFiles, showNotification, t]
   );
 
-  const handleDelete = useCallback(
-    (name: string) => {
-      showConfirmation({
-        title: t('auth_files.delete_title', { defaultValue: 'Delete File' }),
-        message: `${t('auth_files.delete_confirm')} "${name}" ?`,
-        variant: 'danger',
-        confirmText: t('common.confirm'),
-        onConfirm: async () => {
-          setDeleting(name);
-          try {
-            const result = await authFilesApi.deleteFile(name);
-            showNotification(t('auth_files.delete_success'), 'success');
-            applyDeletedFiles(result.files.length > 0 ? result.files : [name]);
-            if (result.deleted > 0) notifyAuthFilesChanged();
-          } catch (err: unknown) {
-            const errorMessage = err instanceof Error ? err.message : '';
-            showNotification(`${t('notification.delete_failed')}: ${errorMessage}`, 'error');
-          } finally {
-            setDeleting(null);
-          }
-        },
-      });
+  /* ---------- 删除：三条入口共用一个确认请求，由页面渲染确认弹窗后调用 confirmDeleteRequest ---------- */
+
+  const [deleteRequest, setDeleteRequest] = useState<AuthFilesDeleteRequest | null>(null);
+
+  const requestDelete = useCallback(
+    (names: string[], mode: AuthFilesDeleteRequest['mode']) => {
+      const wanted = new Set(names);
+      const targets = files.filter((file) => wanted.has(file.name) && !isRuntimeOnlyAuthFile(file));
+      if (targets.length === 0) {
+        showNotification(t('auth_files.delete_filtered_result_none'), 'info');
+        return;
+      }
+      setDeleteRequest({ files: targets, mode });
     },
-    [applyDeletedFiles, showConfirmation, showNotification, t]
+    [files, showNotification, t]
+  );
+
+  const handleDelete = useCallback(
+    (name: string) => requestDelete([name], 'single'),
+    [requestDelete]
   );
 
   const handleDeleteAll = useCallback(
-    (deleteAllOptions: DeleteAllOptions) => {
-      const {
-        filter,
-        problemOnly,
-        disabledOnly,
-        enabledOnly,
-        onResetFilterToAll,
-        onResetProblemOnly,
-        onResetDisabledOnly,
-        onResetEnabledOnly,
-      } = deleteAllOptions;
-      const isFiltered = filter !== 'all';
-      const isProblemOnly = problemOnly === true;
-      const isDisabledOnly = disabledOnly === true;
-      const isEnabledOnly = enabledOnly === true;
-      const typeLabel = isFiltered ? getTypeLabel(t, filter) : t('auth_files.filter_all');
-      let confirmMessage = t('auth_files.delete_all_confirm');
-      if (isDisabledOnly || isEnabledOnly) {
-        confirmMessage = t('auth_files.delete_filtered_result_confirm');
-      } else if (isProblemOnly) {
-        confirmMessage = isFiltered
-          ? t('auth_files.delete_problem_filtered_confirm', { type: typeLabel })
-          : t('auth_files.delete_problem_confirm');
-      } else if (isFiltered) {
-        confirmMessage = t('auth_files.delete_filtered_confirm', { type: typeLabel });
-      }
-
-      showConfirmation({
-        title: t('auth_files.delete_all_title', { defaultValue: 'Delete All Files' }),
-        message: confirmMessage,
-        variant: 'danger',
-        confirmText: t('common.confirm'),
-        onConfirm: async () => {
-          setDeletingAll(true);
-          try {
-            if (!isFiltered && !isProblemOnly && !isDisabledOnly && !isEnabledOnly) {
-              await authFilesApi.deleteAll();
-              showNotification(t('auth_files.delete_all_success'), 'success');
-              invalidateInFlightLoads();
-              onFilesMutatedRef.current?.();
-              setFiles((prev) => prev.filter((file) => isRuntimeOnlyAuthFile(file)));
-              deselectAll();
-              notifyAuthFilesChanged();
-            } else {
-              const filesToDelete = files.filter((file) => {
-                if (isRuntimeOnlyAuthFile(file)) return false;
-                if (
-                  isFiltered &&
-                  normalizeProviderKey(String(file.type ?? file.provider ?? '')) !== filter
-                ) {
-                  return false;
-                }
-                if (isProblemOnly && !isProblemAuthFile(file)) return false;
-                if (isDisabledOnly && file.disabled !== true) return false;
-                if (isEnabledOnly && file.disabled === true) return false;
-                return true;
-              });
-
-              if (filesToDelete.length === 0) {
-                let emptyMessage = t('auth_files.delete_filtered_none', { type: typeLabel });
-                if (isDisabledOnly || isEnabledOnly) {
-                  emptyMessage = t('auth_files.delete_filtered_result_none');
-                } else if (isProblemOnly) {
-                  emptyMessage = isFiltered
-                    ? t('auth_files.delete_problem_filtered_none', { type: typeLabel })
-                    : t('auth_files.delete_problem_none');
-                }
-                showNotification(emptyMessage, 'info');
-                setDeletingAll(false);
-                return;
-              }
-
-              const result = await authFilesApi.deleteFiles(filesToDelete.map((file) => file.name));
-              const success = result.deleted;
-              const failed = result.failed.length;
-
-              applyDeletedFiles(result.files);
-              if (result.deleted > 0) notifyAuthFilesChanged();
-
-              if (failed === 0 && (isDisabledOnly || isEnabledOnly)) {
-                showNotification(
-                  t('auth_files.delete_filtered_result_success', { count: success }),
-                  'success'
-                );
-              } else if (failed === 0 && isProblemOnly) {
-                showNotification(
-                  isFiltered
-                    ? t('auth_files.delete_problem_filtered_success', {
-                        count: success,
-                        type: typeLabel,
-                      })
-                    : t('auth_files.delete_problem_success', { count: success }),
-                  'success'
-                );
-              } else if (failed === 0) {
-                showNotification(
-                  t('auth_files.delete_filtered_success', { count: success, type: typeLabel }),
-                  'success'
-                );
-              } else if (isDisabledOnly || isEnabledOnly) {
-                showNotification(
-                  t('auth_files.delete_filtered_result_partial', { success, failed }),
-                  'warning'
-                );
-              } else if (isProblemOnly) {
-                showNotification(
-                  isFiltered
-                    ? t('auth_files.delete_problem_filtered_partial', {
-                        success,
-                        failed,
-                        type: typeLabel,
-                      })
-                    : t('auth_files.delete_problem_partial', { success, failed }),
-                  'warning'
-                );
-              } else {
-                showNotification(
-                  t('auth_files.delete_filtered_partial', { success, failed, type: typeLabel }),
-                  'warning'
-                );
-              }
-
-              if (isFiltered) {
-                onResetFilterToAll();
-              }
-              if (isProblemOnly) {
-                onResetProblemOnly();
-              }
-              if (isDisabledOnly) {
-                onResetDisabledOnly();
-              }
-              if (isEnabledOnly) {
-                onResetEnabledOnly();
-              }
-            }
-          } catch (err: unknown) {
-            const errorMessage = err instanceof Error ? err.message : '';
-            showNotification(`${t('notification.delete_failed')}: ${errorMessage}`, 'error');
-          } finally {
-            setDeletingAll(false);
-          }
-        },
-      });
-    },
-    [
-      applyDeletedFiles,
-      deselectAll,
-      files,
-      invalidateInFlightLoads,
-      showConfirmation,
-      showNotification,
-      t,
-    ]
+    (filesToDelete: AuthFileItem[]) =>
+      requestDelete(
+        filesToDelete.map((file) => file.name),
+        'filtered'
+      ),
+    [requestDelete]
   );
+
+  const batchDelete = useCallback(
+    (names: string[]) => requestDelete(names, 'batch'),
+    [requestDelete]
+  );
+
+  const cancelDeleteRequest = useCallback(() => setDeleteRequest(null), []);
+
+  /** Always deletes the explicit list (never deleteAll()), so the confirm dialog matches what is removed. */
+  const confirmDeleteRequest = useCallback(async () => {
+    if (!deleteRequest) return;
+    const names = deleteRequest.files.map((file) => file.name);
+    const single = names.length === 1 ? names[0] : null;
+    if (single) setDeleting(single);
+    else setDeletingAll(true);
+    try {
+      const result = await authFilesApi.deleteFiles(names);
+      applyDeletedFiles(result.files);
+      if (result.deleted > 0) notifyAuthFilesChanged();
+      if (result.failed.length === 0) {
+        showNotification(
+          single
+            ? t('auth_files.delete_success')
+            : t('auth_files.delete_many_success', { count: result.deleted }),
+          'success'
+        );
+      } else {
+        showNotification(
+          t('auth_files.delete_many_partial', {
+            success: result.deleted,
+            failed: result.failed.length,
+          }),
+          'warning'
+        );
+      }
+      setDeleteRequest(null);
+    } finally {
+      if (single) setDeleting(null);
+      else setDeletingAll(false);
+    }
+  }, [applyDeletedFiles, deleteRequest, showNotification, t]);
 
   const handleDownload = useCallback(
     async (name: string) => {
@@ -901,47 +787,6 @@ export function useAuthFilesData(options?: UseAuthFilesDataOptions): UseAuthFile
     [deselectAll, showNotification, t]
   );
 
-  const batchDelete = useCallback(
-    (names: string[]) => {
-      const uniqueNames = Array.from(new Set(names));
-      if (uniqueNames.length === 0) return;
-
-      showConfirmation({
-        title: t('auth_files.batch_delete_title'),
-        message: t('auth_files.batch_delete_confirm', { count: uniqueNames.length }),
-        variant: 'danger',
-        confirmText: t('common.confirm'),
-        onConfirm: async () => {
-          try {
-            const result = await authFilesApi.deleteFiles(uniqueNames);
-            applyDeletedFiles(result.files);
-            if (result.deleted > 0) notifyAuthFilesChanged();
-
-            if (result.failed.length === 0) {
-              showNotification(
-                `${t('auth_files.delete_all_success')} (${result.deleted})`,
-                'success'
-              );
-            } else {
-              showNotification(
-                t('auth_files.delete_filtered_partial', {
-                  success: result.deleted,
-                  failed: result.failed.length,
-                  type: t('auth_files.filter_all'),
-                }),
-                'warning'
-              );
-            }
-          } catch (err: unknown) {
-            const errorMessage = err instanceof Error ? err.message : '';
-            showNotification(`${t('notification.delete_failed')}: ${errorMessage}`, 'error');
-          }
-        },
-      });
-    },
-    [applyDeletedFiles, showConfirmation, showNotification, t]
-  );
-
   return {
     files,
     selectedFiles,
@@ -966,6 +811,9 @@ export function useAuthFilesData(options?: UseAuthFilesDataOptions): UseAuthFile
     handleFileChange,
     handleDelete,
     handleDeleteAll,
+    deleteRequest,
+    cancelDeleteRequest,
+    confirmDeleteRequest,
     handleDownload,
     handleManualRefresh,
     handleCooldownReset,

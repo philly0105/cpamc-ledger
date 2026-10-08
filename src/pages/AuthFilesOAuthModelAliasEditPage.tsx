@@ -16,6 +16,7 @@ import { buildOAuthProviderOptions, normalizeProviderKey } from '@/features/auth
 import {
   getModelAliasDraftSignature,
   isOAuthEditorDirty,
+  shouldIgnoreEditorEscape,
 } from '@/features/authFiles/oauthEditorState';
 import type { AuthFileItem, OAuthModelAliasEntry } from '@/types';
 import { generateId, getErrorMessage } from '@/utils/helpers';
@@ -75,6 +76,8 @@ export function AuthFilesOAuthModelAliasEditPage() {
     buildEmptyMappingEntry(),
   ]);
   const [modelsList, setModelsList] = useState<AuthFileModelItem[]>([]);
+  /** Rows with only one of name/alias filled at the last save attempt (flagged, not dropped). */
+  const [incompleteRowIds, setIncompleteRowIds] = useState<Set<string>>(new Set());
   const [modelsLoading, setModelsLoading] = useState(false);
   const [modelsError, setModelsError] = useState<'unsupported' | null>(null);
   const [saving, setSaving] = useState(false);
@@ -158,7 +161,7 @@ export function AuthFilesOAuthModelAliasEditPage() {
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
+      if (event.key === 'Escape' && !shouldIgnoreEditorEscape(event)) {
         handleBack();
       }
     };
@@ -317,6 +320,7 @@ export function AuthFilesOAuthModelAliasEditPage() {
       setMappings((prev) =>
         prev.map((entry, idx) => (idx === index ? { ...entry, [field]: value } : entry))
       );
+      setIncompleteRowIds((prev) => (prev.size ? new Set() : prev));
     },
     []
   );
@@ -336,6 +340,20 @@ export function AuthFilesOAuthModelAliasEditPage() {
     const channel = normalizeProviderKey(provider);
     if (!channel) {
       showNotification(t('oauth_model_alias.provider_required'), 'error');
+      return;
+    }
+
+    // A half-filled row is a mistake, not an empty row: block the save and point at it.
+    const incompleteRows = mappings.filter(
+      (entry) =>
+        Boolean(String(entry.name ?? '').trim()) !== Boolean(String(entry.alias ?? '').trim())
+    );
+    if (incompleteRows.length) {
+      setIncompleteRowIds(new Set(incompleteRows.map((entry) => String(entry.id))));
+      showNotification(
+        t('auth_files.alias_incomplete_rows', { count: incompleteRows.length }),
+        'error'
+      );
       return;
     }
 
@@ -488,6 +506,7 @@ export function AuthFilesOAuthModelAliasEditPage() {
                         : undefined,
                   }))}
                   disabled={disableControls || saving}
+                  invalid={incompleteRowIds.has(String(entry.id))}
                   canRemove={mappings.length > 1}
                   onChange={(field, value) => updateMappingEntry(index, field, value)}
                   onRemove={() => removeMappingEntry(index)}

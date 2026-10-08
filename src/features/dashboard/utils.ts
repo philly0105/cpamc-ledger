@@ -45,9 +45,15 @@ export function bucketsToMinutes(bucketCount: number): number {
 
 export type MeterTone = 'good' | 'warning' | 'critical' | 'idle';
 
-/** 成功率 → 严重度。数值本身始终可见，颜色只是辅助通道。 */
-export function toneForSuccessRate(rate: number | null): MeterTone {
-  if (rate === null) return 'idle';
+/** 低于此请求数时不给出 warning/critical 判定，避免 2 条请求 1 条失败就全页飘红 */
+export const MIN_SAMPLE_REQUESTS = 20;
+
+/** 成功率 → 严重度。数值本身始终可见，颜色只是辅助通道。样本不足时保持中性。 */
+export function toneForSuccessRate(
+  rate: number | null,
+  sampleSize: number = Number.POSITIVE_INFINITY
+): MeterTone {
+  if (rate === null || sampleSize < MIN_SAMPLE_REQUESTS) return 'idle';
   if (rate >= 95) return 'good';
   if (rate >= 80) return 'warning';
   return 'critical';

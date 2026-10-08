@@ -13,6 +13,8 @@ export type VaultHeaderProps = {
   refreshing: boolean;
   uploading: boolean;
   disableControls: boolean;
+  showEmails: boolean;
+  onToggleEmails: () => void;
   onUpload: () => void;
   onRefresh: () => void;
   refreshingCredentials?: boolean;
@@ -21,8 +23,7 @@ export type VaultHeaderProps = {
 };
 
 /**
- * 凭证库头部：共享 PageHeader + ghost 刷新 + 墨色「上传」。
- * meta 行同时承载 VaultPulse 的文字等价信息（谱条本身 aria-hidden）。
+ * 凭证库头部：共享 PageHeader + 「显示邮箱」次按钮 + ghost 刷新/重载 + 墨色「上传」。
  */
 export function VaultHeader(props: VaultHeaderProps) {
   const {
@@ -33,6 +34,8 @@ export function VaultHeader(props: VaultHeaderProps) {
     refreshing,
     uploading,
     disableControls,
+    showEmails,
+    onToggleEmails,
     onUpload,
     onRefresh,
     refreshingCredentials = false,
@@ -65,6 +68,15 @@ export function VaultHeader(props: VaultHeaderProps) {
       meta={meta}
       actions={
         <>
+          <Button
+            variant="secondary"
+            shape="pill"
+            size="sm"
+            onClick={onToggleEmails}
+            aria-pressed={showEmails}
+          >
+            {showEmails ? t('quota_management.hide_emails') : t('quota_management.show_emails')}
+          </Button>
           {onRefreshCredentials && (
             <Button
               variant="ghost"
@@ -87,7 +99,7 @@ export function VaultHeader(props: VaultHeaderProps) {
             disabled={loading || refreshing}
           >
             <IconRefreshCw size={14} className={refreshing ? 'spinning' : undefined} />
-            {t('common.refresh')}
+            {t('auth_files.reload_button')}
           </Button>
           <Button shape="pill" onClick={onUpload} disabled={disableControls || uploading}>
             {uploading ? <LoadingSpinner size={14} /> : <IconUpload size={15} />}
