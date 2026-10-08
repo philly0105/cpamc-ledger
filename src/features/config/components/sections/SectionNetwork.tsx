@@ -54,13 +54,13 @@ export function SectionNetwork({
     field: t(`${N}.session_affinity`),
   });
 
-  const strategyOptions = (['round-robin', 'weighted-round-robin', 'fill-first'] as const).map(
-    (value) => ({
-      value,
-      label: t(`${N}.strategy_${value.replace(/-/g, '_')}`),
-      description: t(`${N}.strategy_${value.replace(/-/g, '_')}_desc`),
-    })
-  );
+  const strategyOptions = (
+    ['round-robin', 'weighted-round-robin', 'fill-first', 'expiring-first'] as const
+  ).map((value) => ({
+    value,
+    label: t(`${N}.strategy_${value.replace(/-/g, '_')}`),
+    description: t(`${N}.strategy_${value.replace(/-/g, '_')}_desc`),
+  }));
   const imageOptions = (['false', 'true', 'chat', 'passthrough'] as const).map((value) => ({
     value,
     label: t(`${N}.disable_image_generation_${value}`),

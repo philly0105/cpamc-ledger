@@ -217,7 +217,8 @@
     "ws_auth_enable": "Требовать аутентификацию для /ws/*",
     "routing_strategy_round_robin": "round-robin (цикл)",
     "routing_strategy_weighted_round_robin": "weighted-round-robin (взвешенный цикл)",
-    "routing_strategy_fill_first": "fill-first (приоритет)"
+    "routing_strategy_fill_first": "fill-first (приоритет)",
+    "routing_strategy_expiring_first": "expiring-first (сначала истекающие)"
   },
   "auth_files": {
     "title": "Управление файлами авторизации",
@@ -1474,6 +1475,7 @@
           "strategy_round_robin": "По кругу",
           "strategy_weighted_round_robin": "Взвешенно по кругу",
           "strategy_fill_first": "Сначала заполнять",
+          "strategy_expiring_first": "Сначала истекающие",
           "session_affinity_ttl": "TTL привязки сессии",
           "force_model_prefix": "Требовать префикс модели",
           "force_model_prefix_desc": "Запросы без префикса модели используют только учётные данные без префикса.",
@@ -1494,6 +1496,7 @@
           "strategy_round_robin_desc": "Перебирать учётные данные по порядку, равномерно распределяя нагрузку.",
           "strategy_weighted_round_robin_desc": "Как по кругу, но учётные данные с большим весом получают больше запросов.",
           "strategy_fill_first_desc": "Использовать первую рабочую учётную запись, пока она не упадёт или не упрётся в квоту.",
+          "strategy_expiring_first_desc": "Использовать учётную запись, у которой квота сбрасывается или подписка заканчивается раньше всего. Необязательное поле subscription_expires_at (дата) для каждой учётной записи в файле авторизации.",
           "session_affinity_desc": "Держать диалог на одной учётной записи, пока он активен, чтобы работали кэши апстрима.",
           "session_affinity_ttl_hint": "Секунд простоя, после которых диалог может перейти на другую учётную запись. 0 или пусто: по умолчанию.",
           "group_cooldowns": "Кулдауны",

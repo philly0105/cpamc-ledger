@@ -217,7 +217,8 @@
     "ws_auth_enable": "Yêu cầu xác thực cho /ws/*",
     "routing_strategy_round_robin": "round-robin (luân phiên)",
     "routing_strategy_weighted_round_robin": "weighted-round-robin (luân phiên có trọng số)",
-    "routing_strategy_fill_first": "fill-first (ưu tiên lấp đầy)"
+    "routing_strategy_fill_first": "fill-first (ưu tiên lấp đầy)",
+    "routing_strategy_expiring_first": "expiring-first (ưu tiên sắp hết hạn)"
   },
   "auth_files": {
     "title": "Quản lý File xác thực",
@@ -1262,6 +1263,7 @@
           "strategy_round_robin": "Xoay vòng",
           "strategy_weighted_round_robin": "Xoay vòng có trọng số",
           "strategy_fill_first": "Lấp đầy trước",
+          "strategy_expiring_first": "Sắp hết hạn trước",
           "session_affinity_ttl": "TTL gắn phiên",
           "force_model_prefix": "Bắt buộc tiền tố mô hình",
           "force_model_prefix_desc": "Yêu cầu không có tiền tố mô hình chỉ dùng thông tin cũng không có tiền tố.",
@@ -1284,6 +1286,7 @@
           "strategy_round_robin_desc": "Luân phiên theo thứ tự để tải được phân bố đều.",
           "strategy_weighted_round_robin_desc": "Như xoay vòng, nhưng thông tin có trọng số cao nhận nhiều yêu cầu hơn.",
           "strategy_fill_first_desc": "Dùng thông tin khỏe đầu tiên cho đến khi lỗi hoặc hết hạn mức, rồi chuyển sang cái tiếp theo.",
+          "strategy_expiring_first_desc": "Dùng tài khoản có hạn mức đặt lại hoặc gói đăng ký kết thúc sớm nhất. Trường tùy chọn subscription_expires_at (ngày) cho từng tài khoản trong tệp xác thực.",
           "session_affinity_desc": "Giữ hội thoại trên cùng một thông tin khi còn hoạt động để cache upstream vẫn hiệu quả.",
           "session_affinity_ttl_hint": "Số giây không hoạt động trước khi hội thoại có thể chuyển sang thông tin khác. 0 hoặc trống: mặc định backend.",
           "group_cooldowns": "Thời gian chờ",

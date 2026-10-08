@@ -217,7 +217,8 @@
     "ws_auth_enable": "Require auth for /ws/*",
     "routing_strategy_round_robin": "round-robin (cycle)",
     "routing_strategy_weighted_round_robin": "weighted-round-robin (weighted cycle)",
-    "routing_strategy_fill_first": "fill-first (prioritize)"
+    "routing_strategy_fill_first": "fill-first (prioritize)",
+    "routing_strategy_expiring_first": "expiring-first (burn soonest-expiring)"
   },
   "auth_files": {
     "title": "Auth Files Management",
@@ -1474,6 +1475,7 @@
           "strategy_round_robin": "Round robin",
           "strategy_weighted_round_robin": "Weighted round robin",
           "strategy_fill_first": "Fill first",
+          "strategy_expiring_first": "Expiring first",
           "session_affinity_ttl": "Session affinity TTL",
           "force_model_prefix": "Force model prefix",
           "force_model_prefix_desc": "Requests without a model prefix only use credentials that have no prefix either.",
@@ -1494,6 +1496,7 @@
           "strategy_round_robin_desc": "Cycle through credentials in order so load is spread evenly.",
           "strategy_weighted_round_robin_desc": "Like round robin, but credentials with a higher weight get more requests.",
           "strategy_fill_first_desc": "Keep using the first healthy credential until it fails or hits quota, then move to the next.",
+          "strategy_expiring_first_desc": "Uses the account whose quota resets or subscription ends soonest. Optional per-account field subscription_expires_at (date) in the auth file.",
           "session_affinity_desc": "Keep a conversation on the same credential while it stays active, so upstream caches keep working.",
           "session_affinity_ttl_hint": "Seconds of inactivity before a conversation may move to another credential. 0 or empty: the backend default.",
           "group_cooldowns": "Cooldowns",

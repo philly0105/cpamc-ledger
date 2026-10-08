@@ -12,6 +12,9 @@ describe('visual config weighted routing strategy', () => {
     expect(parseRoutingStrategy('fill-first')).toBe('fill-first');
     expect(parseRoutingStrategy('fillfirst')).toBe('fill-first');
     expect(parseRoutingStrategy('ff')).toBe('fill-first');
+    expect(parseRoutingStrategy('expiring-first')).toBe('expiring-first');
+    expect(parseRoutingStrategy('expiringfirst')).toBe('expiring-first');
+    expect(parseRoutingStrategy('ef')).toBe('expiring-first');
     expect(parseRoutingStrategy(undefined)).toBe('round-robin');
   });
 
