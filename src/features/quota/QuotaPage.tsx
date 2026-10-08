@@ -57,7 +57,7 @@ import { buildProviderPools } from './quotaPool';
 import { nextRecoveryMs } from './resetSchedule';
 import { QUOTA_ADAPTERS, getQuotaSetter, type QuotaCardState } from './providers';
 import type { QuotaProviderType } from './providers/types';
-import { useDevinQuotaAutoLoad } from './providers/devin/useDevinQuotaAutoLoad';
+import { useQuotaAutoLoad } from './hooks/useQuotaAutoLoad';
 import { useQuotaActions } from './hooks/useQuotaActions';
 import { useQuotaBatchLoader } from './hooks/useQuotaBatchLoader';
 import {
@@ -330,7 +330,7 @@ export function QuotaPage() {
     }
   }, [disableControls, error, filesGeneration, loading, loadQuota, pageItems, sessionGeneration]);
 
-  useDevinQuotaAutoLoad(
+  useQuotaAutoLoad(
     pageItems,
     disableControls ||
       loading ||
