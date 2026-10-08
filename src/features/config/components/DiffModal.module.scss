@@ -297,3 +297,81 @@ $diff-hunk-color: #388bfd;
     font-size: 11px;
   }
 }
+
+/* ---------- 字段级变更列表（YAML diff 之上） ---------- */
+
+.changeList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.changeListTitle {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--text-secondary);
+}
+
+.changeRows {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.changeRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  padding: 7px 10px;
+  border: 1px solid var(--border-color);
+  border-left: 3px solid var(--amber-color);
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+.changeLabel {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.changeSection {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+}
+
+.changeValues {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.changeFrom {
+  color: var(--text-tertiary);
+  text-decoration: line-through;
+}
+
+.changeArrow {
+  color: var(--text-tertiary);
+}
+
+.changeTo {
+  color: var(--text-primary);
+  font-weight: 600;
+}

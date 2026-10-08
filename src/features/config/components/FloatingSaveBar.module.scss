@@ -28,8 +28,11 @@
   box-shadow: var(--shadow-lg);
 }
 
-/* 状态文案：mono 遥测 */
+/* 状态文案：mono 遥测 + 色点（finding 24） */
 .status {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
   font-family: $font-mono;
   font-size: 12px;
   font-weight: 650;
@@ -37,6 +40,52 @@
   padding-right: 4px;
   min-width: 0;
   overflow-wrap: anywhere;
+}
+
+.statusCopy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.summary {
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.toneDot {
+  flex-shrink: 0;
+  width: 7px;
+  height: 7px;
+  margin-top: 5px;
+  border-radius: $radius-full;
+  background: currentColor;
+}
+
+/* 修复错误：失败色描边药丸，跳到第一个错误字段 */
+.fixAction {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid color-mix(in srgb, var(--viz-failure) 40%, transparent);
+  cursor: pointer;
+  background: color-mix(in srgb, var(--viz-failure) 10%, transparent);
+  color: var(--viz-failure);
+  border-radius: $radius-full;
+  padding: 8px 12px;
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1;
+
+  &:hover {
+    background: color-mix(in srgb, var(--viz-failure) 16%, transparent);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--primary-color);
+    outline-offset: 2px;
+  }
 }
 
 .statusWarning {
@@ -146,6 +195,7 @@
 
 @include mobile {
   .container {
+    bottom: calc(8px + env(safe-area-inset-bottom, 0px));
     width: calc(100vw - 16px);
   }
 

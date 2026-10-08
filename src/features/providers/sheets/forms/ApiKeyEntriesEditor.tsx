@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   IconChevronDown,
@@ -8,6 +8,7 @@ import {
   IconPlus,
   IconX,
 } from '@/components/ui/icons';
+import { useNotificationStore } from '@/stores';
 import { maskApiKey } from '@/utils/format';
 import { MAX_CREDENTIAL_WEIGHT } from '@/utils/credentialWeight';
 import type { ApiKeyEntryInput } from '../../types';
@@ -49,6 +50,8 @@ export function ApiKeyEntriesEditor({
   onTestAll,
 }: ApiKeyEntriesEditorProps) {
   const { t } = useTranslation();
+  const { showConfirmation } = useNotificationStore();
+  const fid = useId();
   const [expandedIdx, setExpandedIdx] = useState<number | null>(() =>
     entries.length === 1 && isBlankEntry(entries[0]) ? 0 : null
   );
@@ -72,7 +75,7 @@ export function ApiKeyEntriesEditor({
     setExpandedIdx(idx);
   };
 
-  const handleRemove = (removeIdx: number) => {
+  const removeEntry = (removeIdx: number) => {
     setShowPasswords((prev) => {
       if (!prev.size) return prev;
       const next = new Set<number>();
@@ -92,6 +95,23 @@ export function ApiKeyEntriesEditor({
     onRemove(removeIdx);
   };
 
+  // 已保存的密钥先确认再移除;未保存的空白行直接删。
+  const handleRemove = (removeIdx: number) => {
+    const entry = entries[removeIdx];
+    const saved = entry?.existingApiKey?.trim();
+    if (!saved) {
+      removeEntry(removeIdx);
+      return;
+    }
+    showConfirmation({
+      title: t('providersPage.form.removeApiKeyEntryTitle'),
+      message: t('providersPage.form.removeApiKeyEntryConfirm', { key: maskApiKey(saved) }),
+      variant: 'danger',
+      confirmText: t('providersPage.actions.delete'),
+      onConfirm: () => removeEntry(removeIdx),
+    });
+  };
+
   // Newest entries first, matching the append-on-add order.
   const reversed = entries.map((entry, idx) => ({ entry, idx })).reverse();
   const visible = showAll ? reversed : reversed.slice(0, COLLAPSED_LIMIT);
@@ -108,6 +128,7 @@ export function ApiKeyEntriesEditor({
           className={styles.connectivityBtn}
           disabled={mutating || isTestingAny}
           onClick={onTestAll}
+          title={t('providersPage.connectivity.testHint')}
         >
           {isTestingAny ? (
             <span className={`${styles.statusIcon} ${styles.statusIconLoading}`}>
@@ -121,6 +142,8 @@ export function ApiKeyEntriesEditor({
         const status = statuses[idx] ?? idleStatus;
         const expanded = expandedIdx === idx;
         const summaryKey = entry.apiKey.trim() || entry.existingApiKey?.trim() || '';
+        const entryLabel = t('providersPage.form.apiKeyEntry', { index: idx + 1 });
+        const entryId = `${fid}-${idx}`;
         return (
           <div key={idx} className={styles.entryCard}>
             <div className={styles.entryCardHeader}>
@@ -130,7 +153,7 @@ export function ApiKeyEntriesEditor({
                 aria-expanded={expanded}
                 onClick={() => setExpandedIdx(expanded ? null : idx)}
               >
-                <span>{t('providersPage.form.apiKeyEntry', { index: idx + 1 })}</span>
+                <span>{entryLabel}</span>
                 <span className={styles.entrySummary}>
                   {entry.proxyUrl.trim() ? (
                     <span className={styles.entryBadge} title={entry.proxyUrl}>
@@ -149,6 +172,7 @@ export function ApiKeyEntriesEditor({
                   className={styles.connectivityBtnGhost}
                   disabled={mutating || status.state === 'loading'}
                   onClick={() => onTest(idx)}
+                  aria-label={`${t('providersPage.connectivity.test')}: ${entryLabel}`}
                 >
                   {status.state === 'loading' ? (
                     <span className={`${styles.statusIcon} ${styles.statusIconLoading}`}>
@@ -179,20 +203,27 @@ export function ApiKeyEntriesEditor({
                   className={styles.removeBtn}
                   disabled={mutating || removeDisabled}
                   onClick={() => handleRemove(idx)}
+                  aria-label={`${t('providersPage.form.removeApiKeyEntry')}: ${entryLabel}`}
+                  title={t('providersPage.form.removeApiKeyEntry')}
                 >
                   <IconX size={12} />
                 </button>
               </div>
             </div>
             {status.state === 'error' ? (
-              <div className={styles.connectivityError}>{status.message}</div>
+              <div className={styles.connectivityError} role="alert">
+                {status.message}
+              </div>
             ) : null}
             {expanded ? (
               <div className={styles.entryCardBody}>
                 <div className={styles.field}>
-                  <label className={styles.label}>{t('providersPage.form.apiKey')}</label>
+                  <label className={styles.label} htmlFor={`${entryId}-key`}>
+                    {t('providersPage.form.apiKey')}
+                  </label>
                   <div className={styles.passwordField}>
                     <input
+                      id={`${entryId}-key`}
                       className={styles.passwordInput}
                       type={showPasswords.has(idx) ? 'text' : 'password'}
                       value={entry.apiKey}
@@ -229,8 +260,11 @@ export function ApiKeyEntriesEditor({
                   </div>
                 </div>
                 <div className={styles.field}>
-                  <label className={styles.label}>{t('providersPage.form.proxyUrl')}</label>
+                  <label className={styles.label} htmlFor={`${entryId}-proxy`}>
+                    {t('providersPage.form.proxyUrl')}
+                  </label>
                   <input
+                    id={`${entryId}-proxy`}
                     className={styles.input}
                     value={entry.proxyUrl}
                     onChange={(e) => onUpdate(idx, { proxyUrl: e.target.value })}
@@ -239,8 +273,11 @@ export function ApiKeyEntriesEditor({
                   />
                 </div>
                 <div className={styles.field}>
-                  <label className={styles.label}>{t('providersPage.form.weight')}</label>
+                  <label className={styles.label} htmlFor={`${entryId}-weight`}>
+                    {t('providersPage.form.weight')}
+                  </label>
                   <input
+                    id={`${entryId}-weight`}
                     className={styles.input}
                     type="number"
                     step="1"
@@ -253,8 +290,11 @@ export function ApiKeyEntriesEditor({
                     }
                     disabled={mutating}
                     placeholder="1"
+                    aria-describedby={`${entryId}-weight-hint`}
                   />
-                  <span className={styles.labelHint}>{t('providersPage.form.weightHint')}</span>
+                  <span id={`${entryId}-weight-hint`} className={styles.labelHint}>
+                    {t('providersPage.form.weightHint')}
+                  </span>
                 </div>
               </div>
             ) : null}

@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { animate } from 'motion/mini';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
-import { IconCheck } from '@/components/ui/icons';
+import { IconAlertTriangle, IconCheck } from '@/components/ui/icons';
 import { prefersReducedMotion } from '@/hooks/motion';
 import { useActionBarHeightVar } from '@/hooks/useActionBarHeightVar';
 import type { ConfigStatusTone } from '../uiState';
@@ -19,6 +19,11 @@ export type FloatingSaveBarProps = {
   visible: boolean;
   statusText: string;
   statusTone: ConfigStatusTone;
+  /** 按分区的脏字段摘要（如 "Network 2, Logging 1"），有则作为第二行显示。 */
+  summaryText?: string;
+  /** 校验错误数 > 0 时显示「修复错误」按钮，点击跳到第一个错误字段。 */
+  errorCount?: number;
+  onFixErrors?: () => void;
   saving: boolean;
   saveDisabled: boolean;
   discardDisabled: boolean;
@@ -37,6 +42,9 @@ export function FloatingSaveBar(props: FloatingSaveBarProps) {
     visible,
     statusText,
     statusTone,
+    summaryText,
+    errorCount = 0,
+    onFixErrors,
     saving,
     saveDisabled,
     discardDisabled,
@@ -142,9 +150,19 @@ export function FloatingSaveBar(props: FloatingSaveBarProps) {
     <div className={styles.container} ref={containerRef}>
       <div className={styles.bar} role="group" aria-label={t('config_management.status_dirty')}>
         <span className={`${styles.status} ${toneClass[statusTone]}`} aria-live="polite">
-          {statusText}
+          <span className={styles.toneDot} aria-hidden="true" />
+          <span className={styles.statusCopy}>
+            <span>{statusText}</span>
+            {summaryText ? <span className={styles.summary}>{summaryText}</span> : null}
+          </span>
         </span>
         <div className={styles.actionsGroup}>
+          {errorCount > 0 && onFixErrors ? (
+            <button type="button" className={styles.fixAction} onClick={onFixErrors}>
+              <IconAlertTriangle size={13} />
+              {t('config_management.fix_errors_action', { count: errorCount })}
+            </button>
+          ) : null}
           <button
             type="button"
             className={styles.ghostAction}

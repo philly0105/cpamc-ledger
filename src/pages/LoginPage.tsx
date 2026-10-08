@@ -11,77 +11,14 @@ import { detectApiBaseFromLocation, normalizeApiBase } from '@/utils/connection'
 import { LANGUAGE_LABEL_KEYS, LANGUAGE_ORDER } from '@/utils/constants';
 import { isSupportedLanguage } from '@/utils/language';
 import { INLINE_LOGO_JPEG } from '@/assets/logoInline';
-import type { ApiError } from '@/types';
-import { LegacyBackendError } from '@/services/api/legacyBackendProbe';
+import { getLocalizedLoginError, type LoginError } from './loginErrors';
 import styles from './LoginPage.module.scss';
 
-/**
- * 将 API 错误转换为本地化的用户友好消息
- */
 type RedirectState = { from?: { pathname?: string } };
 
-function getLocalizedErrorMessage(error: unknown, t: (key: string) => string): string {
-  if (error instanceof LegacyBackendError) return t('login.error_legacy_backend');
-  const apiError = error as Partial<ApiError>;
-  const status = typeof apiError.status === 'number' ? apiError.status : undefined;
-  const code = typeof apiError.code === 'string' ? apiError.code : undefined;
-  const message =
-    error instanceof Error
-      ? error.message
-      : typeof apiError.message === 'string'
-        ? apiError.message
-        : typeof error === 'string'
-          ? error
-          : '';
-
-  const withHttpStatus = (summary: string) => {
-    if (!status) {
-      return summary;
-    }
-
-    const genericAxiosMessage = `Request failed with status code ${status}`;
-    const detail = message.trim();
-    const backendDetail =
-      detail && detail !== genericAxiosMessage
-        ? ` (${t('login.error_backend_detail')}: ${detail})`
-        : '';
-
-    return `HTTP ${status}: ${summary}${backendDetail}`;
-  };
-
-  // 根据 HTTP 状态码判断
-  if (status === 401) {
-    return withHttpStatus(t('login.error_unauthorized'));
-  }
-  if (status === 403) {
-    return withHttpStatus(t('login.error_forbidden'));
-  }
-  if (status === 404) {
-    return withHttpStatus(t('login.error_not_found'));
-  }
-  if (status && status >= 500) {
-    return withHttpStatus(t('login.error_server'));
-  }
-
-  // 根据 axios 错误码判断
-  if (code === 'ECONNABORTED' || message.toLowerCase().includes('timeout')) {
-    return t('login.error_timeout');
-  }
-  if (code === 'ERR_NETWORK' || message.toLowerCase().includes('network error')) {
-    return t('login.error_network');
-  }
-  if (code === 'ERR_CERT_AUTHORITY_INVALID' || message.toLowerCase().includes('certificate')) {
-    return t('login.error_ssl');
-  }
-
-  // 检查 CORS 错误
-  if (message.toLowerCase().includes('cors') || message.toLowerCase().includes('cross-origin')) {
-    return t('login.error_cors');
-  }
-
-  // 默认错误消息
-  return withHttpStatus(t('login.error_invalid'));
-}
+const MANAGEMENT_KEY_DOCS_URL = 'https://help.router-for.me/';
+// Just long enough for the splash to fade; the user should not wait on it.
+const AUTO_LOGIN_FADE_MS = 300;
 
 export function LoginPage() {
   const { t } = useTranslation();
@@ -99,15 +36,17 @@ export function LoginPage() {
 
   const [apiBase, setApiBase] = useState('');
   const [managementKey, setManagementKey] = useState('');
-  const [showCustomBase, setShowCustomBase] = useState(false);
+  const [editingBase, setEditingBase] = useState(false);
   const [showKey, setShowKey] = useState(false);
   const [rememberPassword, setRememberPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [autoLoading, setAutoLoading] = useState(true);
   const [autoLoginSuccess, setAutoLoginSuccess] = useState(false);
-  const [error, setError] = useState('');
+  const [restoreFailed, setRestoreFailed] = useState(false);
+  const [error, setError] = useState<LoginError | null>(null);
 
   const detectedBase = useMemo(() => detectApiBaseFromLocation(), []);
+  const effectiveBase = apiBase.trim() ? normalizeApiBase(apiBase) : detectedBase;
   const languageOptions = useMemo(
     () =>
       LANGUAGE_ORDER.map((lang) => ({
@@ -128,19 +67,22 @@ export function LoginPage() {
 
   useEffect(() => {
     const init = async () => {
+      const hadSession = localStorage.getItem('isLoggedIn') === 'true';
       try {
         const autoLoggedIn = await restoreSession();
         if (autoLoggedIn) {
           setAutoLoginSuccess(true);
-          // 延迟跳转，让用户看到成功动画
           setTimeout(() => {
             const redirect = (location.state as RedirectState | null)?.from?.pathname || '/';
             navigate(redirect, { replace: true });
-          }, 1500);
+          }, AUTO_LOGIN_FADE_MS);
         } else {
           setApiBase(storedBase || detectedBase);
           setManagementKey(storedKey || '');
           setRememberPassword(storedRememberPassword || Boolean(storedKey));
+          // restoreSession swallows the login error; a saved session that did
+          // not come back means the attempt failed, not that there was none.
+          setRestoreFailed(hadSession && useAuthStore.getState().connectionStatus === 'error');
         }
       } finally {
         // 自动登录成功时 showSplash 仍由 autoLoginSuccess 维持，可无条件结束 loading
@@ -152,49 +94,35 @@ export function LoginPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleSubmit = useCallback(async () => {
-    if (!managementKey.trim()) {
-      setError(t('login.error_required'));
-      return;
-    }
+  const handleSubmit = useCallback(
+    async (event: React.FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      if (loading) return;
+      if (!managementKey.trim()) {
+        setError({ message: t('login.error_required') });
+        return;
+      }
 
-    const baseToUse = apiBase ? normalizeApiBase(apiBase) : detectedBase;
-    setLoading(true);
-    setError('');
-    try {
-      await login({
-        apiBase: baseToUse,
-        managementKey: managementKey.trim(),
-        rememberPassword,
-      });
-      showNotification(t('common.connected_status'), 'success');
-      navigate('/', { replace: true });
-    } catch (err: unknown) {
-      const message = getLocalizedErrorMessage(err, t);
-      setError(message);
-      showNotification(`${t('notification.login_failed')}: ${message}`, 'error');
-    } finally {
-      setLoading(false);
-    }
-  }, [
-    apiBase,
-    detectedBase,
-    login,
-    managementKey,
-    navigate,
-    rememberPassword,
-    showNotification,
-    t,
-  ]);
-
-  const handleSubmitKeyDown = useCallback(
-    (event: React.KeyboardEvent) => {
-      if (event.key === 'Enter' && !loading) {
-        event.preventDefault();
-        handleSubmit();
+      setLoading(true);
+      setError(null);
+      setRestoreFailed(false);
+      try {
+        await login({
+          apiBase: effectiveBase,
+          managementKey: managementKey.trim(),
+          rememberPassword,
+        });
+        showNotification(t('common.connected_status'), 'success');
+        navigate('/', { replace: true });
+      } catch (err: unknown) {
+        const loginError = getLocalizedLoginError(err, t);
+        setError(loginError);
+        if (loginError.connection) setEditingBase(true);
+      } finally {
+        setLoading(false);
       }
     },
-    [loading, handleSubmit]
+    [effectiveBase, loading, login, managementKey, navigate, rememberPassword, showNotification, t]
   );
 
   if (isAuthenticated && !autoLoading && !autoLoginSuccess) {
@@ -220,7 +148,11 @@ export function LoginPage() {
       <div className={styles.formPanel}>
         {showSplash ? (
           /* 启动动画 */
-          <div className={styles.splashContent}>
+          <div
+            className={[styles.splashContent, autoLoginSuccess ? styles.splashExit : '']
+              .filter(Boolean)
+              .join(' ')}
+          >
             <img src={INLINE_LOGO_JPEG} alt="CPAMC" className={styles.splashLogo} />
             <h1 className={styles.splashTitle}>{t('splash.title')}</h1>
             <p className={styles.splashSubtitle}>{t('splash.subtitle')}</p>
@@ -235,7 +167,7 @@ export function LoginPage() {
             <img src={INLINE_LOGO_JPEG} alt="Logo" className={styles.logo} />
 
             {/* 登录表单卡片 */}
-            <div className={styles.loginCard}>
+            <form className={styles.loginCard} onSubmit={handleSubmit} noValidate>
               <div className={styles.loginHeader}>
                 <div className={styles.titleRow}>
                   <div className={styles.title}>{t('title.login')}</div>
@@ -251,42 +183,65 @@ export function LoginPage() {
                 <div className={styles.subtitle}>{t('login.subtitle')}</div>
               </div>
 
-              <div className={styles.connectionBox}>
-                <div className={styles.label}>{t('login.connection_current')}</div>
-                <div className={styles.value}>{apiBase || detectedBase}</div>
-                <div className={styles.hint}>{t('login.connection_auto_hint')}</div>
-              </div>
+              {restoreFailed && (
+                <div className={styles.restoreNote} role="status">
+                  {t('login.restore_failed')}
+                </div>
+              )}
 
-              <div className={styles.toggleAdvanced}>
-                <SelectionCheckbox
-                  checked={showCustomBase}
-                  onChange={setShowCustomBase}
-                  ariaLabel={t('login.custom_connection_label')}
-                  label={t('login.custom_connection_label')}
-                  labelClassName={styles.toggleLabel}
-                />
-              </div>
-
-              {showCustomBase && (
+              {editingBase ? (
                 <Input
+                  autoFocus
                   label={t('login.custom_connection_label')}
                   placeholder={t('login.custom_connection_placeholder')}
                   value={apiBase}
-                  onChange={(e) => setApiBase(e.target.value)}
-                  hint={t('login.custom_connection_hint')}
+                  name="cpa-api-base"
+                  autoComplete="url"
+                  inputMode="url"
+                  onChange={(e) => {
+                    setApiBase(e.target.value);
+                    setError(null);
+                  }}
+                  hint={
+                    <span className={styles.connectionPreview}>
+                      {t('login.connecting_to')} <code>{effectiveBase}</code>
+                    </span>
+                  }
                 />
+              ) : (
+                <div className={styles.connectionRow}>
+                  <span className={styles.connectionLabel}>{t('login.connecting_to')}</span>
+                  <code className={styles.connectionValue}>{effectiveBase}</code>
+                  <button
+                    type="button"
+                    className={styles.connectionChange}
+                    onClick={() => setEditingBase(true)}
+                  >
+                    {t('login.change_connection')}
+                  </button>
+                </div>
               )}
 
               <Input
-                autoFocus
+                autoFocus={!editingBase}
                 label={t('login.management_key_label')}
                 placeholder={t('login.management_key_placeholder')}
                 type={showKey ? 'text' : 'password'}
                 name="cpa-management-key"
                 autoComplete="current-password"
                 value={managementKey}
-                onChange={(e) => setManagementKey(e.target.value)}
-                onKeyDown={handleSubmitKeyDown}
+                onChange={(e) => {
+                  setManagementKey(e.target.value);
+                  setError(null);
+                }}
+                hint={
+                  <>
+                    {t('login.management_key_help')}{' '}
+                    <a href={MANAGEMENT_KEY_DOCS_URL} target="_blank" rel="noopener noreferrer">
+                      {t('login.management_key_docs')}
+                    </a>
+                  </>
+                }
                 rightElement={
                   <button
                     type="button"
@@ -310,12 +265,23 @@ export function LoginPage() {
                 />
               </div>
 
-              <Button fullWidth onClick={handleSubmit} loading={loading}>
+              {error && (
+                <div className={styles.errorBox} role="alert">
+                  <div>{error.message}</div>
+                  {error.causes && (
+                    <ul className={styles.errorCauses}>
+                      {error.causes.map((cause) => (
+                        <li key={cause}>{cause}</li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
+
+              <Button type="submit" fullWidth loading={loading}>
                 {loading ? t('login.submitting') : t('login.submit_button')}
               </Button>
-
-              {error && <div className={styles.errorBox}>{error}</div>}
-            </div>
+            </form>
           </div>
         )}
       </div>

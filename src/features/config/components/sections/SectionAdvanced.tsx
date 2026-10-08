@@ -1,10 +1,10 @@
 import { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Collapsible } from '@/components/ui/Collapsible';
 import { Input } from '@/components/ui/Input';
 import type { PluginStoreAuthRule } from '@/types/visualConfig';
 import { CONFIG_TAB_ICONS, SECTION_INDEX_LABELS } from '../../constants';
 import type { ConfigSectionProps } from '../../types';
+import { ConfigCollapsible } from '../ConfigCollapsible';
 import { SectionCard } from '../SectionCard';
 import {
   Divider,
@@ -25,6 +25,19 @@ import { SectionOAuthBehavior } from './SectionOAuthBehavior';
 const Icon = CONFIG_TAB_ICONS.advanced;
 
 /** 06 高级与实验：插件源、供应商敏感词、签名缓存与请求头默认值。 */
+const HEADER_FIELD_IDS = [
+  'claudeHeaderUserAgent',
+  'claudeHeaderPackageVersion',
+  'claudeHeaderRuntimeVersion',
+  'claudeHeaderOs',
+  'claudeHeaderArch',
+  'claudeHeaderTimezone',
+  'claudeHeaderTimeout',
+  'claudeHeaderStabilizeDeviceProfile',
+  'codexHeaderUserAgent',
+  'codexHeaderBetaFeatures',
+];
+
 export function SectionAdvanced({
   values,
   validationErrors,
@@ -66,9 +79,10 @@ export function SectionAdvanced({
           disabled={disabled}
           onChange={onChange}
         />
-        <Collapsible
+        <ConfigCollapsible
           label={t('config_management.visual.sections.advanced.plugins_title')}
           defaultOpen={false}
+          fieldIds={['pluginsEnabled', 'pluginStoreSources', 'pluginStoreAuth']}
         >
           <FieldStack>
             <FieldGrid>
@@ -125,11 +139,12 @@ export function SectionAdvanced({
               </FieldGroup>
             </FieldAnchor>
           </FieldStack>
-        </Collapsible>
+        </ConfigCollapsible>
 
-        <Collapsible
+        <ConfigCollapsible
           label={t('config_management.visual.sections.advanced.antigravity_title')}
           defaultOpen={false}
+          fieldIds={['antigravitySensitiveWords', 'antigravitySignatureCacheEnabled', 'antigravitySignatureBypassStrict']}
         >
           <FieldStack>
             <FieldAnchor fieldId="antigravitySensitiveWords">
@@ -195,11 +210,12 @@ export function SectionAdvanced({
               </FieldAnchor>
             </FieldGrid>
           </FieldStack>
-        </Collapsible>
+        </ConfigCollapsible>
 
-        <Collapsible
+        <ConfigCollapsible
           label={t('config_management.visual.sections.advanced.devin_title')}
           defaultOpen={false}
+          fieldIds={['devinSensitiveWords']}
         >
           <FieldStack>
             <FieldAnchor fieldId="devinSensitiveWords">
@@ -228,12 +244,13 @@ export function SectionAdvanced({
               </FieldGroup>
             </FieldAnchor>
           </FieldStack>
-        </Collapsible>
+        </ConfigCollapsible>
 
-        <Collapsible
+        <ConfigCollapsible
           label={t('config_management.visual.sections.headers.title')}
           hint={t('config_management.visual.sections.headers.description')}
           defaultOpen={false}
+          fieldIds={HEADER_FIELD_IDS}
         >
           <FieldStack>
             <FieldGroupHeading
@@ -342,7 +359,7 @@ export function SectionAdvanced({
               </FieldAnchor>
             </FieldGrid>
           </FieldStack>
-        </Collapsible>
+        </ConfigCollapsible>
       </FieldStack>
     </SectionCard>
   );

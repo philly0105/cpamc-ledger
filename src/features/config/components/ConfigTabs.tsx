@@ -16,6 +16,8 @@ export type ConfigTabsProps = {
   errorCounts: Partial<Record<ConfigTabId, number>>;
   /** 有待保存修改的 tabs（uiState.resolveDirtyTabs 的产物），显示琥珀脏点。 */
   dirtyTabs: ReadonlySet<ConfigTabId>;
+  /** 有非阻断警告的 tabs（如远程访问已开但管理密钥为空），显示琥珀「!」徽章。 */
+  warningTabs?: ReadonlySet<ConfigTabId>;
   disabled?: boolean;
   onChange: (id: ConfigTabId) => void;
 };
@@ -28,6 +30,7 @@ export function ConfigTabs({
   active,
   errorCounts,
   dirtyTabs,
+  warningTabs,
   disabled = false,
   onChange,
 }: ConfigTabsProps) {
@@ -75,10 +78,12 @@ export function ConfigTabs({
         const isActive = active === id;
         const errorCount = errorCounts[id] ?? 0;
         const isDirty = dirtyTabs.has(id);
+        const hasWarning = warningTabs?.has(id) ?? false;
         const tabLabel = t(`config_management.visual.sections.${id}.title`);
         const accessibleLabel = [
           tabLabel,
           errorCount > 0 ? t('config_management.meta_errors', { count: errorCount }) : null,
+          hasWarning ? t('config_management.meta_warning') : null,
           isDirty ? t('config_management.status_dirty_short') : null,
         ]
           .filter(Boolean)
@@ -107,6 +112,11 @@ export function ConfigTabs({
             {errorCount > 0 ? (
               <span className={styles.tabBadge} aria-hidden="true">
                 {errorCount}
+              </span>
+            ) : null}
+            {hasWarning ? (
+              <span className={styles.tabWarningBadge} aria-hidden="true">
+                !
               </span>
             ) : null}
             {isDirty ? <span className={styles.tabDirtyDot} aria-hidden="true" /> : null}

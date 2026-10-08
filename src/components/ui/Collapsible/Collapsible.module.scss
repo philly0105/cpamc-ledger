@@ -49,6 +49,24 @@
   font-weight: 400;
 }
 
+/* 摘要行徽章槽（可选）与错误圆点（可选）：默认不渲染，不影响既有消费者 */
+.badge {
+  flex-shrink: 0;
+  font-family: $font-mono;
+  font-size: 11px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  color: var(--amber-text);
+}
+
+.errorDot {
+  flex-shrink: 0;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--viz-failure);
+}
+
 .chevron {
   width: 16px;
   height: 16px;
@@ -85,7 +103,25 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .chevron {
+  /* 摘要行徽章槽（可选）与错误圆点（可选）：默认不渲染，不影响既有消费者 */
+.badge {
+  flex-shrink: 0;
+  font-family: $font-mono;
+  font-size: 11px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  color: var(--amber-text);
+}
+
+.errorDot {
+  flex-shrink: 0;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--viz-failure);
+}
+
+.chevron {
     transition: none;
   }
 

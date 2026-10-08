@@ -4,6 +4,7 @@ import { Collapsible } from '@/components/ui/Collapsible';
 import { Select } from '@/components/ui/Select';
 import type { ProviderBehaviorOptions } from '@/types/provider';
 import { getProviderBehaviorCapabilities } from '../../descriptors';
+import { countConfiguredBehavior } from '../../providerBehavior';
 import type { ProviderBrand } from '../../types';
 import styles from './sharedForm.module.scss';
 
@@ -40,8 +41,12 @@ export function ProviderBehaviorEditor({
       </span>
     </label>
   );
+  const configured = countConfiguredBehavior(value);
   return (
-    <Collapsible label={t('providersPage.behavior.title')}>
+    <Collapsible
+      label={t('providersPage.behavior.title')}
+      hint={t('providersPage.form.configuredCount', { count: configured })}
+    >
       <div className={styles.section}>
         {capabilities.alphaSearch ? checkbox('alphaSearch') : null}
         {capabilities.disableCodexCloaking ? (

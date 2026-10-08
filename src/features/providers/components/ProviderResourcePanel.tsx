@@ -1,14 +1,17 @@
 import { useTranslation } from 'react-i18next';
-import { IconExternalLink, IconPlus, IconSearch } from '@/components/ui/icons';
+import { Button } from '@/components/ui/Button';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { SearchField } from '@/components/ui/SearchField';
+import { IconExternalLink, IconLoader2, IconPlus } from '@/components/ui/icons';
 import type { ProviderRecentUsageMap } from '@/components/providers/utils';
 import { PROVIDER_LOGOS } from '../brandLogos';
 import { getKimiAffiliateUrl } from '../kimi';
+import { canTestResource, type ProviderTestResult } from '../providerTestStore';
 import { APIKEY_FUN_AFFILIATE_URL, APIKEY_FUN_DASHBOARD_URL } from '../sponsor';
 import { getSponsorProviderDefinition } from '../sponsorDefinitions';
-import type { ProviderGroup, ProviderResource } from '../types';
-import { ProviderResourceTable } from './ProviderResourceTable';
+import type { ProviderGroup, ProviderResource, ProviderSortBy, SortDir } from '../types';
+import { ProviderResourceLedger } from './ProviderResourceLedger';
 import { ProviderResourceToolbar } from './ProviderResourceToolbar';
-import type { ProviderSortBy, SortDir } from '../types';
 import styles from './ProviderResourcePanel.module.scss';
 
 export interface ProviderPanelControls {
@@ -28,12 +31,17 @@ interface ProviderResourcePanelProps {
   filteredResources: ProviderResource[];
   selectedId: string | null;
   disableMutations?: boolean;
+  isFetching?: boolean;
   usageByProvider?: ProviderRecentUsageMap;
   toolbarControls?: ProviderPanelControls;
-  onView: (resource: ProviderResource) => void;
+  testResults: Record<string, ProviderTestResult>;
+  testingAll?: boolean;
+  onTest: (resource: ProviderResource) => void;
+  onTestAll: () => void;
+  onOpen: (resource: ProviderResource) => void;
   onEdit: (resource: ProviderResource) => void;
   onDelete: (resource: ProviderResource) => void;
-  onToggleDisabled?: (resource: ProviderResource, disabled: boolean) => void;
+  onToggleDisabled: (resource: ProviderResource, disabled: boolean) => void;
   onCreate: () => void;
 }
 
@@ -44,9 +52,14 @@ export function ProviderResourcePanel({
   filteredResources,
   selectedId,
   disableMutations,
+  isFetching,
   usageByProvider,
   toolbarControls,
-  onView,
+  testResults,
+  testingAll,
+  onTest,
+  onTestAll,
+  onOpen,
   onEdit,
   onDelete,
   onToggleDisabled,
@@ -55,21 +68,22 @@ export function ProviderResourcePanel({
   const { t, i18n } = useTranslation();
   const logo = PROVIDER_LOGOS[group.id];
   const providerTitle = t(`providersPage.providerNames.${group.id}`);
-  const hasProviderInfo = group.resources.length > 0;
-  const showSponsorRegistrationLink = group.id === 'apikeyFun' && !hasProviderInfo;
-  const showSponsorDashboardLink = group.id === 'apikeyFun' && hasProviderInfo;
+  const hasResources = group.resources.length > 0;
+  const showSponsorRegistrationLink = group.id === 'apikeyFun' && !hasResources;
+  const showSponsorDashboardLink = group.id === 'apikeyFun' && hasResources;
   const registrationUrl =
     group.id === 'kimi'
       ? getKimiAffiliateUrl(i18n.resolvedLanguage ?? i18n.language)
       : group.id === 'fennoAI' || group.id === 'qiniuCloud'
         ? getSponsorProviderDefinition(group.id).affiliateUrl
         : null;
-  const registrationLabel = t(
-    group.id === 'kimi' ? 'providersPage.sponsor.registerNow' : 'providersPage.sponsor.registerLink'
-  );
-  const emptyText = showSponsorRegistrationLink
-    ? t('providersPage.sponsor.emptyRegisterHint')
-    : t('providersPage.table.empty');
+  const testableCount = group.resources.filter((r) => canTestResource(r) && !r.disabled).length;
+  const hasActiveFilter = filter.trim() !== '' || (toolbarControls?.selectedModels.size ?? 0) > 0;
+  const clearFilters = () => {
+    onFilterChange('');
+    toolbarControls?.onSelectedModelsChange(new Set());
+  };
+
   const logoClassName = [
     styles.logo,
     logo?.themeSurface ? styles.logoThemeSurface : '',
@@ -103,11 +117,75 @@ export function ProviderResourcePanel({
     </>
   );
 
+  const renderBody = () => {
+    if (!hasResources) {
+      return (
+        <EmptyState
+          title={
+            showSponsorRegistrationLink
+              ? t('providersPage.sponsor.emptyRegisterHint')
+              : t('providersPage.table.emptyTitle', { provider: providerTitle })
+          }
+          description={
+            showSponsorRegistrationLink ? undefined : t('providersPage.table.emptyDescription')
+          }
+          action={
+            showSponsorRegistrationLink ? (
+              <a
+                className={`${styles.emptyActionButton} ${styles.emptyActionButtonEmphasis}`}
+                href={APIKEY_FUN_AFFILIATE_URL}
+                target="_blank"
+                rel="noreferrer"
+              >
+                <IconExternalLink size={16} />
+                <span>{t('providersPage.sponsor.registerLink')}</span>
+              </a>
+            ) : (
+              <Button variant="primary" size="sm" onClick={onCreate} disabled={disableMutations}>
+                <IconPlus size={14} aria-hidden="true" />
+                {t('providersPage.actions.addNamed', { provider: providerTitle })}
+              </Button>
+            )
+          }
+        />
+      );
+    }
+    if (filteredResources.length === 0) {
+      return (
+        <EmptyState
+          title={t('providersPage.table.noMatchTitle')}
+          description={t('providersPage.table.noMatchDescription', {
+            count: group.resources.length,
+          })}
+          action={
+            <Button variant="secondary" size="sm" onClick={clearFilters}>
+              {t('common.clear_search')}
+            </Button>
+          }
+        />
+      );
+    }
+    return (
+      <ProviderResourceLedger
+        resources={filteredResources}
+        selectedId={selectedId}
+        disableMutations={disableMutations}
+        usageByProvider={usageByProvider}
+        testResults={testResults}
+        onOpen={onOpen}
+        onEdit={onEdit}
+        onDelete={onDelete}
+        onToggleDisabled={onToggleDisabled}
+        onTest={onTest}
+      />
+    );
+  };
+
   return (
-    <section className={styles.panel}>
+    <section className={styles.panel} aria-labelledby={`providers-panel-${group.id}`}>
       <div className={styles.header}>
         <div className={styles.headerMain}>
-          <div className={styles.titleArea}>
+          <div className={styles.titleArea} id={`providers-panel-${group.id}`}>
             {showSponsorDashboardLink ? (
               <a
                 className={`${styles.titleRow} ${styles.titleLink}`}
@@ -128,97 +206,87 @@ export function ProviderResourcePanel({
                 target="_blank"
                 rel="noreferrer"
               >
-                <span className={styles.sponsorLinkText}>
-                  {t('providersPage.sponsor.dashboardLink')}
-                </span>
-                <IconExternalLink className={styles.sponsorLinkIcon} size={14} />
+                {t('providersPage.sponsor.dashboardLink')}
+                <IconExternalLink size={12} aria-hidden="true" />
               </a>
             ) : registrationUrl ? (
-              <>
-                <a
-                  className={[
-                    styles.sponsorLink,
-                    styles.sponsorLinkEmphasis,
-                    group.id === 'kimi' ? styles.sponsorLinkKimi : '',
-                  ]
-                    .filter(Boolean)
-                    .join(' ')}
-                  href={registrationUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  <span className={styles.sponsorLinkText}>{registrationLabel}</span>
-                  <IconExternalLink className={styles.sponsorLinkIcon} size={14} />
-                </a>
-                {group.id === 'kimi' ? (
-                  <p className={styles.kimiPromo}>{t('providersPage.sponsor.kimiPromo')}</p>
-                ) : null}
-              </>
-            ) : null}
-          </div>
-          <div className={styles.searchWrap}>
-            <span className={styles.searchIcon} aria-hidden="true">
-              <IconSearch size={16} />
-            </span>
-            <input
-              type="search"
-              className={styles.searchInput}
-              value={filter}
-              onChange={(event) => onFilterChange(event.target.value)}
-              placeholder={t('providersPage.table.filterPlaceholder')}
-            />
-          </div>
-        </div>
-        {toolbarControls ? (
-          <div className={styles.headerToolbarRow}>
-            <ProviderResourceToolbar
-              key={group.id}
-              sortBy={toolbarControls.sortBy}
-              sortDir={toolbarControls.sortDir}
-              onSortBy={toolbarControls.onSortBy}
-              onSortDir={toolbarControls.onSortDir}
-              availableModels={toolbarControls.availableModels}
-              selectedModels={toolbarControls.selectedModels}
-              onSelectedModelsChange={toolbarControls.onSelectedModelsChange}
-            />
-          </div>
-        ) : null}
-      </div>
-
-      {filteredResources.length === 0 ? (
-        <div className={styles.empty}>
-          <div>{emptyText}</div>
-          <div className={styles.emptyAction}>
-            {showSponsorRegistrationLink ? (
               <a
-                className={`${styles.emptyActionButton} ${styles.emptyActionButtonEmphasis}`}
-                href={APIKEY_FUN_AFFILIATE_URL}
+                className={styles.sponsorLink}
+                href={registrationUrl}
                 target="_blank"
                 rel="noreferrer"
               >
-                <IconExternalLink size={16} />
-                <span>{t('providersPage.sponsor.registerLink')}</span>
+                {t('providersPage.sponsor.registerLink')}
+                <IconExternalLink size={12} aria-hidden="true" />
               </a>
-            ) : (
-              <button type="button" className={styles.emptyActionButton} onClick={onCreate}>
-                <IconPlus size={16} />
-                <span>{t('providersPage.actions.new')}</span>
-              </button>
-            )}
+            ) : null}
+          </div>
+          <div className={styles.headerActions}>
+            {isFetching ? (
+              <span className={styles.refreshing} role="status">
+                <IconLoader2 size={14} className={styles.spin} aria-hidden="true" />
+                {t('providersPage.actions.refreshing')}
+              </span>
+            ) : null}
+            {testableCount > 0 ? (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={onTestAll}
+                disabled={disableMutations || testingAll}
+                loading={testingAll}
+                title={t('providersPage.connectivity.testAllHint', { count: testableCount })}
+              >
+                {t('providersPage.connectivity.testAll')}
+              </Button>
+            ) : null}
+            {hasResources ? (
+              <Button variant="primary" size="sm" onClick={onCreate} disabled={disableMutations}>
+                <IconPlus size={14} aria-hidden="true" />
+                {t('providersPage.actions.addNamed', { provider: providerTitle })}
+              </Button>
+            ) : null}
           </div>
         </div>
-      ) : (
-        <ProviderResourceTable
-          resources={filteredResources}
-          selectedId={selectedId}
-          disableMutations={disableMutations}
-          usageByProvider={usageByProvider}
-          onView={onView}
-          onEdit={onEdit}
-          onDelete={onDelete}
-          onToggleDisabled={onToggleDisabled}
-        />
-      )}
+        {hasResources ? (
+          <div className={styles.toolbarRow}>
+            <SearchField
+              className={styles.search}
+              value={filter}
+              onChange={onFilterChange}
+              placeholder={t('providersPage.table.filterPlaceholder')}
+              ariaLabel={t('providersPage.table.filterAriaLabel', { provider: providerTitle })}
+              clearLabel={t('common.clear_search')}
+            />
+            {toolbarControls ? (
+              <ProviderResourceToolbar
+                key={group.id}
+                sortBy={toolbarControls.sortBy}
+                sortDir={toolbarControls.sortDir}
+                onSortBy={toolbarControls.onSortBy}
+                onSortDir={toolbarControls.onSortDir}
+                availableModels={toolbarControls.availableModels}
+                selectedModels={toolbarControls.selectedModels}
+                onSelectedModelsChange={toolbarControls.onSelectedModelsChange}
+              />
+            ) : null}
+          </div>
+        ) : null}
+        {hasResources && testableCount > 0 ? (
+          <p className={styles.testHint}>{t('providersPage.connectivity.testHint')}</p>
+        ) : null}
+      </div>
+
+      {renderBody()}
+
+      {hasResources && filteredResources.length > 0 && hasActiveFilter ? (
+        <p className={styles.resultCount} role="status">
+          {t('providersPage.table.showingCount', {
+            shown: filteredResources.length,
+            total: group.resources.length,
+          })}
+        </p>
+      ) : null}
     </section>
   );
 }

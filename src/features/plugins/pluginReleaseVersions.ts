@@ -73,6 +73,25 @@ const normalizeRelease = (value: unknown): PluginReleaseVersion | null => {
   };
 };
 
+export class PluginReleaseFetchError extends Error {
+  status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = 'PluginReleaseFetchError';
+    this.status = status;
+  }
+}
+
+// Unauthenticated GitHub API calls are limited to 60/hour per IP; 403 and 429 are
+// both used for that case.
+export const isGitHubRateLimitError = (error: unknown): boolean => {
+  if (error instanceof PluginReleaseFetchError && (error.status === 403 || error.status === 429)) {
+    return true;
+  }
+  return error instanceof Error && /rate limit/i.test(error.message);
+};
+
 export const fetchPluginReleaseVersions = async (
   repository: string
 ): Promise<PluginReleaseVersion[]> => {
@@ -91,7 +110,7 @@ export const fetchPluginReleaseVersions = async (
   });
 
   if (result.statusCode < 200 || result.statusCode >= 300) {
-    throw new Error(getApiCallErrorMessage(result));
+    throw new PluginReleaseFetchError(getApiCallErrorMessage(result), result.statusCode);
   }
 
   if (!Array.isArray(result.body)) {

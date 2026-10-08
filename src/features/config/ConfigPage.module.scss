@@ -14,6 +14,19 @@
   );
 }
 
+/* 粘性工具区：搜索 + 模式切换 + tabs 一起贴在应用头部下方（finding 5）。 */
+.chrome {
+  position: sticky;
+  top: var(--header-height, 64px);
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0 -4px;
+  padding: 6px 4px 0;
+  background: var(--bg-secondary);
+}
+
 /* 工具栏行：模式相关搜索（字段搜索 / 源码搜索）+ 右端的模式切换 */
 .toolbar {
   display: flex;
@@ -36,8 +49,18 @@
   min-width: 0;
 }
 
+.skeletonStack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
 @include mobile {
   .page {
     gap: 16px;
+  }
+
+  .chrome {
+    gap: 10px;
   }
 }

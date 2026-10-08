@@ -1,4 +1,6 @@
 import { useTranslation } from 'react-i18next';
+import { Button } from '@/components/ui/Button';
+import { PageHeader, type PageHeaderMetaSegment } from '@/components/ui/PageHeader';
 import { IconLoader2, IconPlus, IconRefreshCw } from '@/components/ui/icons';
 import styles from './ProviderHeaderCard.module.scss';
 
@@ -6,7 +8,8 @@ interface ProviderHeaderCardProps {
   title?: string;
   totalActive: number;
   totalResources: number;
-  providerFamilies: number;
+  /** 需要关注的条目数(已禁用或近期有失败) */
+  totalAttention?: number;
   updatedAtLabel: string;
   isFetching?: boolean;
   isNewDisabled?: boolean;
@@ -22,7 +25,7 @@ export function ProviderHeaderCard({
   title,
   totalActive,
   totalResources,
-  providerFamilies,
+  totalAttention = 0,
   updatedAtLabel,
   isFetching = false,
   isNewDisabled = false,
@@ -34,63 +37,105 @@ export function ProviderHeaderCard({
   onNew,
 }: ProviderHeaderCardProps) {
   const { t } = useTranslation();
-  const cardClassName = [styles.card, variant === 'quickStart' ? styles.quickStartCard : '']
-    .filter(Boolean)
-    .join(' ');
+
+  // Quick Start 保持 Phase 2 的稳定 h1 与卡片结构,不走 PageHeader。
+  if (variant === 'quickStart') {
+    return (
+      <section className={`${styles.card} ${styles.quickStartCard}`}>
+        <div className={styles.row}>
+          <div className={styles.titleArea}>
+            <h1 className={styles.title}>{title ?? t('providersPage.header.title')}</h1>
+          </div>
+          <div className={styles.actions}>
+            <button
+              type="button"
+              className={`${styles.btn} ${styles.btnOutline}`}
+              onClick={onRefresh}
+              disabled={isFetching}
+              aria-label={
+                isFetching ? t('providersPage.actions.syncing') : t('providersPage.actions.refresh')
+              }
+            >
+              <span className={`${styles.btnIcon} ${isFetching ? styles.spin : ''}`.trim()}>
+                {isFetching ? <IconLoader2 size={16} /> : <IconRefreshCw size={16} />}
+              </span>
+              <span>
+                {isFetching
+                  ? t('providersPage.actions.syncing')
+                  : t('providersPage.actions.refresh')}
+              </span>
+            </button>
+            {showNewAction ? (
+              <button
+                type="button"
+                className={`${styles.btn} ${styles.btnPrimary}`}
+                onClick={onNew}
+                disabled={isNewDisabled}
+              >
+                <IconPlus size={16} />
+                <span>{newLabel ?? t('providersPage.actions.new')}</span>
+              </button>
+            ) : null}
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  const meta: PageHeaderMetaSegment[] = showSummary
+    ? [
+        {
+          key: 'entries',
+          text: t('providersPage.header.entries', { count: totalResources }),
+        },
+        {
+          key: 'active',
+          text: t('providersPage.header.active', { count: totalActive }),
+          tone: totalResources > 0 && totalActive === 0 ? 'warning' : 'ok',
+        },
+        {
+          key: 'attention',
+          text: t('providersPage.header.attention', { count: totalAttention }),
+          tone: totalAttention > 0 ? 'attention' : 'quiet',
+        },
+      ]
+    : [];
 
   return (
-    <section className={cardClassName}>
-      <div className={styles.row}>
-        <div className={styles.titleArea}>
-          <h1 className={styles.title}>{title ?? t('providersPage.header.title')}</h1>
-        </div>
-        <div className={styles.actions}>
-          <button
-            type="button"
-            className={`${styles.btn} ${styles.btnOutline}`}
+    <PageHeader
+      title={title ?? t('providersPage.header.title')}
+      meta={meta}
+      actions={
+        <>
+          <Button
+            variant="secondary"
+            shape="pill"
+            size="sm"
             onClick={onRefresh}
             disabled={isFetching}
+            loading={isFetching}
+            title={t('providersPage.header.updatedAt', { time: updatedAtLabel })}
             aria-label={
               isFetching ? t('providersPage.actions.syncing') : t('providersPage.actions.refresh')
             }
           >
-            <span className={`${styles.btnIcon} ${isFetching ? styles.spin : ''}`.trim()}>
-              {isFetching ? <IconLoader2 size={16} /> : <IconRefreshCw size={16} />}
-            </span>
-            <span>
-              {isFetching ? t('providersPage.actions.syncing') : t('providersPage.actions.refresh')}
-            </span>
-          </button>
+            {!isFetching ? <IconRefreshCw size={14} aria-hidden="true" /> : null}
+            {isFetching ? t('providersPage.actions.syncing') : t('providersPage.actions.refresh')}
+          </Button>
           {showNewAction ? (
-            <button
-              type="button"
-              className={`${styles.btn} ${styles.btnPrimary}`}
+            <Button
+              variant="primary"
+              shape="pill"
+              size="sm"
               onClick={onNew}
               disabled={isNewDisabled}
             >
-              <IconPlus size={16} />
-              <span>{newLabel ?? t('providersPage.actions.new')}</span>
-            </button>
+              <IconPlus size={14} aria-hidden="true" />
+              {newLabel ?? t('providersPage.actions.new')}
+            </Button>
           ) : null}
-        </div>
-      </div>
-
-      {showSummary ? (
-        <div className={styles.chips}>
-          <span className={`${styles.chip} ${styles.chipPrimary}`}>
-            {t('providersPage.header.activeResources', {
-              active: totalActive,
-              total: totalResources,
-            })}
-          </span>
-          <span className={styles.chip}>
-            {t('providersPage.header.providerFamilies', { count: providerFamilies })}
-          </span>
-          <span className={styles.chip}>
-            {t('providersPage.header.updatedAt', { time: updatedAtLabel })}
-          </span>
-        </div>
-      ) : null}
-    </section>
+        </>
+      }
+    />
   );
 }

@@ -21,3 +21,12 @@ export function pickProviderBehavior(
       : {}),
   };
 }
+
+/** 已显式配置的行为开关数量，供折叠头提示用。 */
+export const countConfiguredBehavior = (value: ProviderBehaviorOptions): number =>
+  [
+    value.alphaSearch === true,
+    value.disableCodexCloaking !== undefined,
+    value.rebuildMidSystemMessage === true,
+    value.supportPromptCacheKey === true,
+  ].filter(Boolean).length;

@@ -20,14 +20,51 @@
 }
 
 .searchControl {
-  padding-right: 38px !important;
+  padding-right: 64px !important;
 }
 
 .searchIcon {
   display: inline-flex;
   align-items: center;
+  gap: 6px;
   color: var(--text-tertiary);
   pointer-events: none;
+}
+
+.shortcutKey {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border: 1px solid var(--border-color);
+  border-radius: 5px;
+  font-family: $font-mono;
+  font-size: 11px;
+  line-height: 1;
+  color: var(--text-tertiary);
+}
+
+.clearButton {
+  @include button-reset;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  color: var(--text-tertiary);
+
+  &:hover {
+    color: var(--text-primary);
+    background: color-mix(in srgb, var(--text-primary) 6%, transparent);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--primary-color);
+    outline-offset: 1px;
+  }
 }
 
 .searchResults {
@@ -82,6 +119,13 @@
   background: color-mix(in srgb, var(--text-primary) 6%, transparent);
 }
 
+.searchResultMain {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
 .searchResultLabel {
   display: inline-flex;
   align-items: baseline;
@@ -91,6 +135,31 @@
   font-size: 13px;
   font-weight: 650;
   line-height: 1.3;
+}
+
+.searchResultYaml {
+  font-family: $font-mono;
+  font-size: 11px;
+  color: var(--text-tertiary);
+  overflow-wrap: anywhere;
+}
+
+.searchResultAside {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  flex: 0 0 auto;
+  max-width: 45%;
+}
+
+.searchResultValue {
+  font-family: $font-mono;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  max-width: 100%;
+  @include text-ellipsis;
 }
 
 .searchResultQualifier {

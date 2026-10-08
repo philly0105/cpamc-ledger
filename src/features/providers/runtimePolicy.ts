@@ -86,3 +86,9 @@ export function buildRuntimePolicy(
   }
   return result;
 }
+
+/** 与继承不同的覆盖项数量，供折叠头提示用。 */
+export const countPolicyOverrides = (value: RuntimePolicyDraft): number =>
+  [value.cooling !== 'inherit', value.retry.trim() !== '', value.errorsMode === 'override'].filter(
+    Boolean
+  ).length;

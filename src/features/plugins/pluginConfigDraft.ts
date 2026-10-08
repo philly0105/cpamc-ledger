@@ -18,6 +18,31 @@ type Translate = (key: string, options?: Record<string, unknown>) => string;
 export const normalizePluginConfigFieldType = (field: PluginConfigField): string =>
   field.type.trim().toLowerCase();
 
+const SECRET_FIELD_PATTERN = /(secret|token|passw(or)?d|api[_-]?key|private[_-]?key|credential)/i;
+
+/** Names that look like credentials are masked by default in the config sheet. */
+export const isSecretConfigField = (field: Pick<PluginConfigField, 'name'>): boolean =>
+  SECRET_FIELD_PATTERN.test(field.name);
+
+/**
+ * Prefer a label declared by the plugin schema (`label` or `title`, not part of the
+ * typed contract yet); otherwise humanize the raw key: "webhook_url" -> "Webhook url".
+ */
+export const getConfigFieldLabel = (field: PluginConfigField): string => {
+  const raw = field as unknown as Record<string, unknown>;
+  const declared = raw.label ?? raw.title;
+  if (typeof declared === 'string' && declared.trim()) return declared.trim();
+  const spaced = field.name
+    .replace(/[_-]+/g, ' ')
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .trim()
+    .toLowerCase();
+  return spaced ? spaced[0].toUpperCase() + spaced.slice(1) : field.name;
+};
+
+export const isPluginConfigDraftDirty = (draft: PluginConfigDraft): boolean =>
+  draft.enabledTouched || draft.priorityTouched || Object.values(draft.touchedFields).some(Boolean);
+
 const stringifyJSONValue = (value: unknown): string => {
   if (value === undefined || value === null) return '';
   try {

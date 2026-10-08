@@ -1,4 +1,3 @@
-import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/Button';
 import {
@@ -15,8 +14,6 @@ export type ConfigHeaderProps = {
   reloadDisabled: boolean;
   reloading: boolean;
   onReload: () => void;
-  /** 移动端上移到头部动作行的 ModeSwitch 槽位（桌面端为 null，ModeSwitch 在 tabs 行右端）。 */
-  extraActions?: ReactNode;
 };
 
 const TONE: Record<HeaderMetaSegment['tone'], PageHeaderMetaTone> = {
@@ -35,7 +32,6 @@ export function ConfigHeader({
   reloadDisabled,
   reloading,
   onReload,
-  extraActions,
 }: ConfigHeaderProps) {
   const { t } = useTranslation();
   const segments: PageHeaderMetaSegment[] = meta.map((segment) => ({
@@ -52,19 +48,10 @@ export function ConfigHeader({
       title={t('config_management.title')}
       meta={segments}
       actions={
-        <>
-          {extraActions}
-          <Button
-            variant="ghost"
-            shape="pill"
-            size="sm"
-            onClick={onReload}
-            disabled={reloadDisabled}
-          >
-            <IconRefreshCw size={14} className={reloading ? 'spinning' : undefined} />
-            {t('config_management.reload')}
-          </Button>
-        </>
+        <Button variant="ghost" shape="pill" size="sm" onClick={onReload} disabled={reloadDisabled}>
+          <IconRefreshCw size={14} className={reloading ? 'spinning' : undefined} />
+          {t('config_management.reload')}
+        </Button>
       }
     />
   );

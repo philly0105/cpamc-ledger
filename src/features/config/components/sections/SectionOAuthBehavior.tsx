@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next';
-import { Collapsible } from '@/components/ui/Collapsible';
 import { Input } from '@/components/ui/Input';
 import type { ConfigSectionProps } from '../../types';
+import { ConfigCollapsible } from '../ConfigCollapsible';
 import { CodexLiveICEServersEditor } from '../blocks/CodexLiveICEServersEditor';
 import { getValidationMessage } from '../blocks/shared';
 import {
@@ -13,6 +13,30 @@ import {
 } from '../fields/FieldPrimitives';
 
 /** OAuth/file-backed provider behavior, independent of API-key provider configuration. */
+const OAUTH_FIELD_IDS = [
+  'claudeModelLevelCooling',
+  'claudeDisableCloakMode',
+  'claudeCodeDisableCloakingModelList',
+  'codexDisableCloaking',
+  'codexModelLevelCooling',
+  'codexStreamBootstrapBuffering',
+  'codexStreamBootstrapTimeout',
+  'codexOptimizeMultiAgentV2',
+  'codexOrphanDelegationCompatibility',
+  'codexResponseSteering',
+  'antigravityConnectionPoolEnabled',
+  'antigravityConnectionPoolIdleTimeout',
+  'antigravityConnectionPoolMaxIdleConnsPerHost',
+  'xaiInjectXSearch',
+  'codexLiveMediaRelayEnabled',
+  'codexLiveMediaRelayMaxSessions',
+  'codexLiveMediaRelayDisablePrivateRemoteIPs',
+  'codexLiveMediaRelayPublicIP',
+  'codexLiveMediaRelayUDPPortMin',
+  'codexLiveMediaRelayUDPPortMax',
+  'codexLiveMediaRelayICEServers',
+];
+
 export function SectionOAuthBehavior({
   values,
   validationErrors,
@@ -21,9 +45,10 @@ export function SectionOAuthBehavior({
 }: ConfigSectionProps) {
   const { t } = useTranslation();
   return (
-    <Collapsible
+    <ConfigCollapsible
       label={t('config_management.visual.additions.oauthTitle')}
       hint={t('config_management.visual.additions.oauthHint')}
+      fieldIds={OAUTH_FIELD_IDS}
     >
       <FieldStack>
         <FieldGroup title={t('config_management.visual.additions.claudeTitle')}>
@@ -39,8 +64,10 @@ export function SectionOAuthBehavior({
             </FieldAnchor>
             <FieldAnchor fieldId="claudeDisableCloakMode">
               <ToggleRow
+                variant="danger"
                 title={t('config_management.visual.additions.claudeDisableCloakMode.label')}
                 description={t('config_management.visual.additions.claudeDisableCloakMode.hint')}
+                consequence={t('config_management.visual.additions.claudeDisableCloakMode.consequence')}
                 checked={values.claudeDisableCloakMode}
                 disabled={disabled}
                 onChange={(claudeDisableCloakMode) => onChange({ claudeDisableCloakMode })}
@@ -67,8 +94,10 @@ export function SectionOAuthBehavior({
           <FieldGrid>
             <FieldAnchor fieldId="codexDisableCloaking">
               <ToggleRow
+                variant="danger"
                 title={t('config_management.visual.additions.codexDisableCloaking.label')}
                 description={t('config_management.visual.additions.codexDisableCloaking.hint')}
+                consequence={t('config_management.visual.additions.codexDisableCloaking.consequence')}
                 checked={values.codexDisableCloaking}
                 disabled={disabled}
                 onChange={(codexDisableCloaking) => onChange({ codexDisableCloaking })}
@@ -300,6 +329,6 @@ export function SectionOAuthBehavior({
           </FieldGrid>
         </FieldGroup>
       </FieldStack>
-    </Collapsible>
+    </ConfigCollapsible>
   );
 }

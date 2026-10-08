@@ -1,4 +1,4 @@
-import { memo, useId, useMemo, useState } from 'react';
+import { memo, useEffect, useId, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
@@ -46,6 +46,19 @@ function ScopedApiKeysCardEditor({
     [apiBase, apiKeys]
   );
   const [apiKeyIds, setApiKeyIds] = useState(() => apiKeys.map(() => makeClientId()));
+  // Finding 11: a deleted key stays visible as a "Removed" row with Undo until the draft is
+  // saved or discarded. Entries whose key reappears in the list (undo / discard / reload) are
+  // dropped automatically; the list is also cleared once editing resumes after a save.
+  const [removedKeys, setRemovedKeys] = useState<
+    { id: string; key: string; index: number; name?: string }[]
+  >([]);
+  const visibleRemoved = useMemo(
+    () => removedKeys.filter((entry) => !apiKeys.includes(entry.key)),
+    [apiKeys, removedKeys]
+  );
+  useEffect(() => {
+    if (!disabled) setRemovedKeys([]);
+  }, [disabled]);
   const renderApiKeyIds = useMemo(() => {
     if (apiKeyIds.length === apiKeys.length) return apiKeyIds;
     if (apiKeyIds.length > apiKeys.length) return apiKeyIds.slice(0, apiKeys.length);
@@ -98,8 +111,27 @@ function ScopedApiKeysCardEditor({
   const handleDelete = (apiKeyId: string) => {
     const index = renderApiKeyIds.findIndex((id) => id === apiKeyId);
     if (index < 0) return;
+    const key = apiKeys[index];
+    setRemovedKeys((prev) => [
+      ...prev.filter((entry) => entry.key !== key),
+      { id: apiKeyId, key, index, name: names[nameFingerprints[index]] },
+    ]);
     setApiKeyIds(renderApiKeyIds.filter((id) => id !== apiKeyId));
     updateApiKeys(apiKeys.filter((_, i) => i !== index));
+  };
+
+  const handleUndoDelete = (entryId: string) => {
+    const entry = removedKeys.find((item) => item.id === entryId);
+    if (!entry) return;
+    const insertAt = Math.min(entry.index, apiKeys.length);
+    const nextKeys = [...apiKeys.slice(0, insertAt), entry.key, ...apiKeys.slice(insertAt)];
+    setApiKeyIds([
+      ...renderApiKeyIds.slice(0, insertAt),
+      entry.id,
+      ...renderApiKeyIds.slice(insertAt),
+    ]);
+    setRemovedKeys((prev) => prev.filter((item) => item.id !== entryId));
+    updateApiKeys(nextKeys);
   };
 
   const handleSave = () => {
@@ -136,7 +168,7 @@ function ScopedApiKeysCardEditor({
   const handleCopy = async (apiKey: string) => {
     const copied = await copyToClipboard(apiKey);
     showNotification(
-      t(copied ? 'notification.link_copied' : 'notification.copy_failed'),
+      t(copied ? 'config_management.visual.api_keys.copied' : 'notification.copy_failed'),
       copied ? 'success' : 'error'
     );
   };
@@ -149,13 +181,18 @@ function ScopedApiKeysCardEditor({
   return (
     <div className="form-group" style={{ marginBottom: 0 }}>
       <div className={styles.blockHeaderRow}>
-        <label style={{ margin: 0 }}>{t('config_management.visual.api_keys.label')}</label>
+        <label style={{ margin: 0 }}>
+          {t('config_management.visual.api_keys.label')}
+          <span className={styles.blockCount}>
+            {t('config_management.visual.api_keys.count', { count: apiKeys.length })}
+          </span>
+        </label>
         <Button size="sm" onClick={openAddModal} disabled={disabled}>
           {t('config_management.visual.api_keys.add')}
         </Button>
       </div>
 
-      {apiKeys.length === 0 ? (
+      {apiKeys.length === 0 && visibleRemoved.length === 0 ? (
         <div className={styles.emptyState}>{t('config_management.visual.api_keys.empty')}</div>
       ) : (
         <div className="item-list" style={{ marginTop: 4 }}>
@@ -193,6 +230,31 @@ function ScopedApiKeysCardEditor({
                   disabled={disabled}
                 >
                   {t('config_management.visual.common.delete')}
+                </Button>
+              </div>
+            </div>
+          ))}
+          {visibleRemoved.map((entry) => (
+            <div key={entry.id} className={`item-row ${styles.removedRow}`}>
+              <div className="item-meta">
+                <div className={`pill ${styles.removedPill}`}>
+                  {t('config_management.visual.api_keys.removed')}
+                </div>
+                <div className={`item-title ${styles.removedTitle}`}>
+                  {entry.name ?? t('config_management.visual.api_keys.input_label')}
+                </div>
+                <div className={`item-subtitle ${styles.removedTitle}`}>
+                  {maskApiKey(entry.key)}
+                </div>
+              </div>
+              <div className="item-actions">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => handleUndoDelete(entry.id)}
+                  disabled={disabled}
+                >
+                  {t('config_management.visual.api_keys.undo_remove')}
                 </Button>
               </div>
             </div>

@@ -1,9 +1,9 @@
 import { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Collapsible } from '@/components/ui/Collapsible';
 import type { PayloadFilterRule, PayloadRule } from '@/types/visualConfig';
 import { CONFIG_TAB_ICONS, SECTION_INDEX_LABELS } from '../../constants';
 import type { ConfigSectionProps } from '../../types';
+import { ConfigCollapsible } from '../ConfigCollapsible';
 import { SectionCard } from '../SectionCard';
 import { FieldAnchor, FieldStack } from '../fields/FieldPrimitives';
 import { PayloadFilterRulesEditor } from '../blocks/PayloadFilterRulesEditor';
@@ -58,8 +58,9 @@ export function SectionPayload({
     >
       <FieldStack>
         <FieldAnchor fieldId="payloadDefaultRules">
-          <Collapsible
+          <ConfigCollapsible
             key={`payloadDefaultRules-${payloadValidationKey}`}
+            fieldIds={['payloadDefaultRules']}
             label={t('config_management.visual.sections.payload.default_rules')}
             hint={t('config_management.visual.sections.payload.default_rules_desc')}
             defaultOpen={hasPayloadValidationErrors}
@@ -69,12 +70,13 @@ export function SectionPayload({
               disabled={disabled}
               onChange={handlePayloadDefaultRulesChange}
             />
-          </Collapsible>
+          </ConfigCollapsible>
         </FieldAnchor>
 
         <FieldAnchor fieldId="payloadDefaultRawRules">
-          <Collapsible
+          <ConfigCollapsible
             key={`payloadDefaultRawRules-${payloadValidationKey}`}
+            fieldIds={['payloadDefaultRawRules']}
             label={t('config_management.visual.sections.payload.default_raw_rules')}
             hint={t('config_management.visual.sections.payload.default_raw_rules_desc')}
             defaultOpen={hasPayloadValidationErrors}
@@ -85,12 +87,13 @@ export function SectionPayload({
               rawJsonValues
               onChange={handlePayloadDefaultRawRulesChange}
             />
-          </Collapsible>
+          </ConfigCollapsible>
         </FieldAnchor>
 
         <FieldAnchor fieldId="payloadOverrideRules">
-          <Collapsible
+          <ConfigCollapsible
             key={`payloadOverrideRules-${payloadValidationKey}`}
+            fieldIds={['payloadOverrideRules']}
             label={t('config_management.visual.sections.payload.override_rules')}
             hint={t('config_management.visual.sections.payload.override_rules_desc')}
             defaultOpen={hasPayloadValidationErrors}
@@ -101,12 +104,13 @@ export function SectionPayload({
               protocolFirst
               onChange={handlePayloadOverrideRulesChange}
             />
-          </Collapsible>
+          </ConfigCollapsible>
         </FieldAnchor>
 
         <FieldAnchor fieldId="payloadOverrideRawRules">
-          <Collapsible
+          <ConfigCollapsible
             key={`payloadOverrideRawRules-${payloadValidationKey}`}
+            fieldIds={['payloadOverrideRawRules']}
             label={t('config_management.visual.sections.payload.override_raw_rules')}
             hint={t('config_management.visual.sections.payload.override_raw_rules_desc')}
             defaultOpen={hasPayloadValidationErrors}
@@ -118,12 +122,13 @@ export function SectionPayload({
               rawJsonValues
               onChange={handlePayloadOverrideRawRulesChange}
             />
-          </Collapsible>
+          </ConfigCollapsible>
         </FieldAnchor>
 
         <FieldAnchor fieldId="payloadFilterRules">
-          <Collapsible
+          <ConfigCollapsible
             key={`payloadFilterRules-${payloadValidationKey}`}
+            fieldIds={['payloadFilterRules']}
             label={t('config_management.visual.sections.payload.filter_rules')}
             hint={t('config_management.visual.sections.payload.filter_rules_desc')}
             defaultOpen={hasPayloadValidationErrors}
@@ -133,7 +138,7 @@ export function SectionPayload({
               disabled={disabled}
               onChange={handlePayloadFilterRulesChange}
             />
-          </Collapsible>
+          </ConfigCollapsible>
         </FieldAnchor>
       </FieldStack>
     </SectionCard>

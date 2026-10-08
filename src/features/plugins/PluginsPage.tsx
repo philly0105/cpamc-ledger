@@ -1,22 +1,25 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { ErrorBanner } from '@/components/ui/ErrorBanner';
 import { Input } from '@/components/ui/Input';
+import { PageHeader, type PageHeaderMetaSegment } from '@/components/ui/PageHeader';
+import { SearchField } from '@/components/ui/SearchField';
 import { Select } from '@/components/ui/Select';
 import { Sheet } from '@/components/ui/Sheet';
+import { Skeleton } from '@/components/ui/Skeleton';
 import { ToggleSwitch } from '@/components/ui/ToggleSwitch';
 import {
-  IconGithub,
-  IconPlug,
+  IconEye,
+  IconEyeOff,
   IconRefreshCw,
-  IconSearch,
   IconSettings,
   IconSidebarStore,
-  IconTrash2,
 } from '@/components/ui/icons';
 import { useHeaderRefresh } from '@/hooks/useHeaderRefresh';
+import { useRevealGroup } from '@/hooks/motion';
 import { pluginsApi, pluginStoreApi } from '@/services/api';
 import { useAuthStore, useConfigStore, useNotificationStore } from '@/stores';
 import { getErrorMessage, isRecord } from '@/utils/helpers';
@@ -29,30 +32,56 @@ import type {
 import {
   buildPluginConfigDraft,
   buildPluginConfigPatch,
+  getConfigFieldLabel,
+  isPluginConfigDraftDirty,
+  isSecretConfigField,
   normalizePluginConfigFieldType,
   type PluginConfigDraft,
 } from './pluginConfigDraft';
 import {
+  buildPluginResourceRoute,
   getPluginTitle,
   notifyPluginResourcesChanged,
   resolvePluginAssetURL,
 } from './pluginResources';
 import { waitForPluginState } from './pluginPolling';
 import { getPluginLogo } from './pluginLogo';
+import {
+  derivePluginStatus,
+  isAttentionStatus,
+  matchesPluginStatusFilter,
+  type PluginStatusFilter,
+  type PluginStatusKind,
+} from './pluginStatus';
+import { usePluginRestartStore } from './pluginRestartStore';
+import { PluginLogo } from './components/PluginLogo';
+import { PluginNotice } from './components/PluginNotice';
+import { PluginOverflowMenu } from './components/PluginOverflowMenu';
+import { PluginSummaryCards, type PluginSummaryCard } from './components/PluginSummaryCards';
 import styles from './PluginsPage.module.scss';
 
 type PluginRuntimeWaitStatus = 'ready' | 'globalDisabled' | 'timeout';
 
-function PluginCardLogo({ src }: { src: string }) {
-  const [failed, setFailed] = useState(false);
-  const showImage = Boolean(src) && !failed;
+const SKELETON_ROWS = 4;
+const FOCUS_HIGHLIGHT_MS = 2400;
 
-  return showImage ? (
-    <img src={src} alt="" onError={() => setFailed(true)} />
-  ) : (
-    <IconPlug size={18} />
-  );
-}
+const STATUS_CHIP_CLASS: Record<PluginStatusKind, string> = {
+  running: styles.chipRunning,
+  disabled: styles.chipDisabled,
+  needsConfig: styles.chipAttention,
+  restartNeeded: styles.chipAttention,
+  error: styles.chipError,
+};
+
+const STATUS_LABEL_KEY: Record<PluginStatusKind, string> = {
+  running: 'plugin_management.status_running',
+  disabled: 'plugin_management.status_disabled',
+  needsConfig: 'plugin_management.status_needs_config',
+  restartNeeded: 'plugin_management.status_restart_needed',
+  error: 'plugin_management.status_error',
+};
+
+const STATUS_FILTERS: PluginStatusFilter[] = ['all', 'running', 'disabled', 'attention'];
 
 const hasStatus = (error: unknown, status: number) => isRecord(error) && error.status === status;
 
@@ -64,30 +93,42 @@ const hasRestartRequiredError = (error: unknown) =>
 export function PluginsPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const connectionStatus = useAuthStore((state) => state.connectionStatus);
   const apiBase = useAuthStore((state) => state.apiBase);
   const managementKey = useAuthStore((state) => state.managementKey);
   const clearConfigCache = useConfigStore((state) => state.clearCache);
   const showNotification = useNotificationStore((state) => state.showNotification);
   const showConfirmation = useNotificationStore((state) => state.showConfirmation);
+  const restartRequiredIDs = usePluginRestartStore((state) => state.ids);
+  const markRestartRequired = usePluginRestartStore((state) => state.markRestartRequired);
+  const clearRestartRequired = usePluginRestartStore((state) => state.clearRestartRequired);
+  const headerRef = useRevealGroup<HTMLElement>();
 
   const [data, setData] = useState<PluginListResponse | null>(null);
-  const [storeLogos, setStoreLogos] = useState<{
+  const [storeEntries, setStoreEntries] = useState<{
     apiBase: string;
     managementKey: string;
     entries: PluginStoreEntry[];
   } | null>(null);
   const [filter, setFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState<PluginStatusFilter>('all');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [editingPlugin, setEditingPlugin] = useState<PluginListEntry | null>(null);
   const [draft, setDraft] = useState<PluginConfigDraft | null>(null);
+  const [draftLoading, setDraftLoading] = useState(false);
+  const [draftError, setDraftError] = useState('');
+  const [sheetNotice, setSheetNotice] = useState('');
+  const [revealedSecrets, setRevealedSecrets] = useState<Set<string>>(new Set());
   const [mutatingID, setMutatingID] = useState('');
   const [deletingID, setDeletingID] = useState('');
-  const [openingConfigID, setOpeningConfigID] = useState('');
+  const [highlightedID, setHighlightedID] = useState('');
   const configRequestSeq = useRef(0);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   const connected = connectionStatus === 'connected';
+  const focusID = searchParams.get('focus') ?? '';
 
   const loadPlugins = useCallback(async () => {
     if (!connected) {
@@ -134,46 +175,68 @@ export function PluginsPage() {
     void loadPlugins();
   }, [loadPlugins]);
 
+  // Store metadata is optional (logos, update flags); its failure must not block management.
   useEffect(() => {
-    setStoreLogos(null);
+    setStoreEntries(null);
     if (!connected || !data) return;
     let cancelled = false;
     void pluginStoreApi.list().then(
       (response) => {
         if (!cancelled) {
-          setStoreLogos({ apiBase, managementKey, entries: response.plugins });
+          setStoreEntries({ apiBase, managementKey, entries: response.plugins });
         }
       },
-      () => {
-        // Store metadata is optional; its failure must not block plugin management.
-      }
+      () => {}
     );
     return () => {
       cancelled = true;
     };
   }, [connected, apiBase, managementKey, data]);
 
-  const logoEntries =
-    connected && storeLogos?.apiBase === apiBase && storeLogos.managementKey === managementKey
-      ? storeLogos.entries
-      : [];
+  const storeEntryList =
+    connected && storeEntries?.apiBase === apiBase && storeEntries.managementKey === managementKey
+      ? storeEntries.entries
+      : null;
 
-  const pluginStats = useMemo(() => {
-    const plugins = data?.plugins ?? [];
-    return {
-      discovered: plugins.length,
-      registered: plugins.filter((plugin) => plugin.registered).length,
-      configured: plugins.filter((plugin) => plugin.configured).length,
-      effective: plugins.filter((plugin) => plugin.effectiveEnabled).length,
-    };
-  }, [data?.plugins]);
+  const plugins = useMemo(() => data?.plugins ?? [], [data?.plugins]);
+  const pluginsEnabled = data?.pluginsEnabled ?? true;
+
+  const statusByID = useMemo(
+    () =>
+      new Map(
+        plugins.map((plugin) => [
+          plugin.id,
+          derivePluginStatus(plugin, pluginsEnabled, restartRequiredIDs.includes(plugin.id)),
+        ])
+      ),
+    [plugins, pluginsEnabled, restartRequiredIDs]
+  );
+
+  const counts = useMemo(() => {
+    let running = 0;
+    let disabled = 0;
+    let attention = 0;
+    let pages = 0;
+    plugins.forEach((plugin) => {
+      const kind = statusByID.get(plugin.id)?.kind ?? 'error';
+      if (kind === 'running') running += 1;
+      else if (kind === 'disabled') disabled += 1;
+      else if (isAttentionStatus(kind)) attention += 1;
+      if (plugin.effectiveEnabled) pages += plugin.menus.filter((menu) => menu.path.trim()).length;
+    });
+    const installedIDs = new Set(plugins.map((plugin) => plugin.id));
+    const updates = (storeEntryList ?? []).filter(
+      (entry) => entry.installed && entry.updateAvailable && installedIDs.has(entry.id)
+    ).length;
+    return { running, disabled, attention, pages, updates };
+  }, [plugins, statusByID, storeEntryList]);
 
   const visiblePlugins = useMemo(() => {
     const query = filter.trim().toLowerCase();
-    const plugins = data?.plugins ?? [];
-    if (!query) return plugins;
-
     return plugins.filter((plugin) => {
+      const kind = statusByID.get(plugin.id)?.kind ?? 'error';
+      if (!matchesPluginStatusFilter(kind, statusFilter)) return false;
+      if (!query) return true;
       const haystack = [
         plugin.id,
         plugin.path,
@@ -188,57 +251,168 @@ export function PluginsPage() {
         .toLowerCase();
       return haystack.includes(query);
     });
-  }, [data?.plugins, filter]);
+  }, [filter, plugins, statusByID, statusFilter]);
+
+  // `/plugins?focus=<id>` (from the Store's Manage button): scroll to and highlight the row once.
+  useEffect(() => {
+    if (loading || !focusID || !data) return;
+    const exists = plugins.some((plugin) => plugin.id === focusID);
+    if (exists) {
+      setFilter('');
+      setStatusFilter('all');
+      setHighlightedID(focusID);
+      window.requestAnimationFrame(() => {
+        document
+          .getElementById(`plugin-row-${focusID}`)
+          ?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      });
+    }
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete('focus');
+        return next;
+      },
+      { replace: true }
+    );
+  }, [data, focusID, loading, plugins, setSearchParams]);
+
+  useEffect(() => {
+    if (!highlightedID) return;
+    const timer = window.setTimeout(() => setHighlightedID(''), FOCUS_HIGHLIGHT_MS);
+    return () => window.clearTimeout(timer);
+  }, [highlightedID]);
 
   const resolvePluginAsset = useCallback(
     (value: string) => resolvePluginAssetURL(value, apiBase),
     [apiBase]
   );
 
-  const openConfigSheet = async (plugin: PluginListEntry) => {
-    if (openingConfigID || mutatingID || deletingID) return;
+  /* ---------- config sheet ---------- */
 
-    const requestSeq = configRequestSeq.current + 1;
-    configRequestSeq.current = requestSeq;
-    setOpeningConfigID(plugin.id);
+  const loadDraft = useCallback(
+    async (plugin: PluginListEntry) => {
+      const requestSeq = configRequestSeq.current + 1;
+      configRequestSeq.current = requestSeq;
+      setDraftLoading(true);
+      setDraftError('');
+      try {
+        const currentConfig = await pluginsApi.getConfig(plugin.id);
+        if (configRequestSeq.current !== requestSeq) return;
+        setDraft(buildPluginConfigDraft(plugin, currentConfig));
+      } catch (err: unknown) {
+        if (configRequestSeq.current !== requestSeq) return;
+        setDraftError(
+          hasStatus(err, 404)
+            ? t('plugin_management.config_not_found')
+            : `${t('plugin_management.config_load_failed')}: ${getErrorMessage(
+                err,
+                t('plugin_management.config_load_failed')
+              )}`
+        );
+      } finally {
+        if (configRequestSeq.current === requestSeq) setDraftLoading(false);
+      }
+    },
+    [t]
+  );
+
+  const openConfigSheet = (plugin: PluginListEntry) => {
+    if (mutatingID || deletingID) return;
     setEditingPlugin(plugin);
     setDraft(null);
-
-    try {
-      const currentConfig = await pluginsApi.getConfig(plugin.id);
-      if (configRequestSeq.current !== requestSeq) return;
-
-      setDraft(buildPluginConfigDraft(plugin, currentConfig));
-    } catch (err: unknown) {
-      if (configRequestSeq.current !== requestSeq) return;
-
-      setEditingPlugin(null);
-      setDraft(null);
-      showNotification(
-        hasStatus(err, 404)
-          ? t('plugin_management.config_not_found')
-          : `${t('plugin_management.config_load_failed')}: ${getErrorMessage(
-              err,
-              t('plugin_management.config_load_failed')
-            )}`,
-        'error'
-      );
-    } finally {
-      if (configRequestSeq.current === requestSeq) {
-        setOpeningConfigID('');
-      }
-    }
+    setSheetNotice('');
+    setRevealedSecrets(new Set());
+    void loadDraft(plugin);
   };
 
-  const closeConfigSheet = () => {
-    if (mutatingID || openingConfigID || deletingID) return;
+  const closeConfigSheet = useCallback(() => {
+    configRequestSeq.current += 1;
     setEditingPlugin(null);
     setDraft(null);
-  };
+    setDraftError('');
+    setDraftLoading(false);
+    setSheetNotice('');
+  }, []);
+
+  const draftDirty = Boolean(draft && isPluginConfigDraftDirty(draft));
+
+  const confirmSheetClose = useCallback((): Promise<boolean> => {
+    if (!draftDirty) return Promise.resolve(true);
+    return new Promise<boolean>((resolve) => {
+      showConfirmation({
+        title: t('common.unsaved_changes_title'),
+        message: t('common.unsaved_changes_message'),
+        variant: 'danger',
+        confirmText: t('common.leave'),
+        cancelText: t('common.stay'),
+        onConfirm: () => resolve(true),
+        onCancel: () => resolve(false),
+      });
+    });
+  }, [draftDirty, showConfirmation, t]);
 
   const updateDraft = (updater: (current: PluginConfigDraft) => PluginConfigDraft) => {
     setDraft((current) => (current ? updater(current) : current));
   };
+
+  const savingConfig = Boolean(editingPlugin && mutatingID === editingPlugin.id);
+
+  const handleSaveConfig = async () => {
+    if (!editingPlugin || !draft || draftLoading || mutatingID || deletingID) return;
+    const { patch, errors } = buildPluginConfigPatch(draft, editingPlugin.configFields, t);
+
+    if (Object.keys(errors).length > 0) {
+      setDraft({ ...draft, errors });
+      showNotification(t('plugin_management.validation_failed'), 'warning');
+      return;
+    }
+
+    if (Object.keys(patch).length === 0) {
+      closeConfigSheet();
+      showNotification(t('plugin_management.save_success'), 'success');
+      return;
+    }
+
+    setMutatingID(editingPlugin.id);
+    setSheetNotice('');
+    try {
+      await pluginsApi.patchConfig(editingPlugin.id, patch);
+      clearConfigCache();
+      const enabledChanged =
+        typeof patch.enabled === 'boolean' && patch.enabled !== editingPlugin.enabled;
+      const status = enabledChanged
+        ? await waitForPluginRuntimeState(editingPlugin.id, patch.enabled === true)
+        : await loadPlugins().then((): PluginRuntimeWaitStatus => 'ready');
+      if (status === 'ready') {
+        notifyPluginResourcesChanged();
+        closeConfigSheet();
+        showNotification(t('plugin_management.save_success'), 'success');
+      } else {
+        // Saved, but runtime state is unsettled: keep the sheet open with the warning inline.
+        setSheetNotice(
+          t(
+            status === 'globalDisabled'
+              ? 'plugin_management.global_disabled_hint'
+              : 'plugin_management.runtime_pending'
+          )
+        );
+        void loadDraft(editingPlugin);
+      }
+    } catch (err: unknown) {
+      showNotification(
+        `${t('plugin_management.save_failed')}: ${getErrorMessage(
+          err,
+          t('plugin_management.save_failed')
+        )}`,
+        'error'
+      );
+    } finally {
+      setMutatingID('');
+    }
+  };
+
+  /* ---------- row actions ---------- */
 
   const handleTogglePlugin = async (plugin: PluginListEntry, enabled: boolean) => {
     if (deletingID) return;
@@ -274,7 +448,7 @@ export function PluginsPage() {
   };
 
   const handleDeletePlugin = (plugin: PluginListEntry) => {
-    if (!connected || mutatingID || openingConfigID || deletingID) return;
+    if (!connected || mutatingID || deletingID) return;
 
     const name = getPluginTitle(plugin);
     showConfirmation({
@@ -288,14 +462,12 @@ export function PluginsPage() {
         try {
           const result = await pluginsApi.deletePlugin(plugin.id);
           clearConfigCache();
-          if (editingPlugin?.id === plugin.id) {
-            setEditingPlugin(null);
-            setDraft(null);
-          }
+          if (editingPlugin?.id === plugin.id) closeConfigSheet();
           await loadPlugins();
           notifyPluginResourcesChanged();
           showNotification(t('plugin_management.delete_success'), 'success');
           if (result.restartRequired) {
+            markRestartRequired(plugin.id);
             showNotification(t('plugin_management.delete_restart_required'), 'warning');
           }
         } catch (err: unknown) {
@@ -315,81 +487,19 @@ export function PluginsPage() {
     });
   };
 
-  const handleSaveConfig = async () => {
-    if (!editingPlugin || !draft || openingConfigID || mutatingID || deletingID) return;
-    const { patch, errors } = buildPluginConfigPatch(draft, editingPlugin.configFields, t);
+  /* ---------- config field editors ---------- */
 
-    if (Object.keys(errors).length > 0) {
-      setDraft({ ...draft, errors });
-      showNotification(t('plugin_management.validation_failed'), 'warning');
-      return;
-    }
-
-    if (Object.keys(patch).length === 0) {
-      setEditingPlugin(null);
-      setDraft(null);
-      showNotification(t('plugin_management.save_success'), 'success');
-      return;
-    }
-
-    setMutatingID(editingPlugin.id);
-    try {
-      await pluginsApi.patchConfig(editingPlugin.id, patch);
-      clearConfigCache();
-      const enabledChanged =
-        typeof patch.enabled === 'boolean' && patch.enabled !== editingPlugin.enabled;
-      const status = enabledChanged
-        ? await waitForPluginRuntimeState(editingPlugin.id, patch.enabled === true)
-        : await loadPlugins().then((): PluginRuntimeWaitStatus => 'ready');
-      if (status === 'ready') {
-        notifyPluginResourcesChanged();
-      }
-      setEditingPlugin(null);
-      setDraft(null);
-      if (status === 'ready') {
-        showNotification(t('plugin_management.save_success'), 'success');
-      } else {
-        showNotification(
-          t(
-            status === 'globalDisabled'
-              ? 'plugin_management.global_disabled_hint'
-              : 'plugin_management.runtime_pending'
-          ),
-          'warning'
-        );
-      }
-    } catch (err: unknown) {
-      showNotification(
-        `${t('plugin_management.save_failed')}: ${getErrorMessage(
-          err,
-          t('plugin_management.save_failed')
-        )}`,
-        'error'
-      );
-    } finally {
-      setMutatingID('');
-    }
-  };
-
-  const handleFieldTextChange =
-    (fieldName: string) => (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-      const value = event.target.value;
-      updateDraft((current) => ({
-        ...current,
-        values: { ...current.values, [fieldName]: value },
-        errors: { ...current.errors, [fieldName]: '' },
-        touchedFields: { ...current.touchedFields, [fieldName]: true },
-      }));
-    };
-
-  const handleFieldBooleanChange = (fieldName: string, value: boolean) => {
+  const touchField = (fieldName: string, value: string | boolean) =>
     updateDraft((current) => ({
       ...current,
       values: { ...current.values, [fieldName]: value },
       errors: { ...current.errors, [fieldName]: '' },
       touchedFields: { ...current.touchedFields, [fieldName]: true },
     }));
-  };
+
+  const handleFieldTextChange =
+    (fieldName: string) => (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
+      touchField(fieldName, event.target.value);
 
   const handlePriorityChange = (event: ChangeEvent<HTMLInputElement>) => {
     const value = event.target.value;
@@ -401,26 +511,42 @@ export function PluginsPage() {
     }));
   };
 
+  const toggleSecret = (fieldName: string) =>
+    setRevealedSecrets((current) => {
+      const next = new Set(current);
+      if (next.has(fieldName)) next.delete(fieldName);
+      else next.add(fieldName);
+      return next;
+    });
+
   const renderFieldEditor = (field: PluginConfigField) => {
     if (!draft) return null;
     const fieldType = normalizePluginConfigFieldType(field);
     const value = draft.values[field.name];
     const textValue = typeof value === 'string' ? value : '';
     const errorText = draft.errors[field.name];
+    const label = getConfigFieldLabel(field);
+    const showKey = label !== field.name;
+    const hint = (
+      <>
+        {showKey ? <code className={styles.fieldKey}>{field.name}</code> : null}
+        {field.description ? <span>{field.description}</span> : null}
+      </>
+    );
+    const hasHint = showKey || Boolean(field.description);
+    const inputId = `plugin-field-${field.name}`;
 
     if (fieldType === 'boolean') {
       return (
         <div key={field.name} className={styles.fieldRow}>
           <div className={styles.fieldText}>
-            <div className={styles.fieldLabel}>{field.name}</div>
-            {field.description ? (
-              <div className={styles.fieldDescription}>{field.description}</div>
-            ) : null}
+            <div className={styles.fieldLabel}>{label}</div>
+            {hasHint ? <div className={styles.fieldDescription}>{hint}</div> : null}
           </div>
           <ToggleSwitch
             checked={value === true}
-            onChange={(nextValue) => handleFieldBooleanChange(field.name, nextValue)}
-            ariaLabel={field.name}
+            onChange={(nextValue) => touchField(field.name, nextValue)}
+            ariaLabel={label}
           />
         </div>
       );
@@ -429,22 +555,15 @@ export function PluginsPage() {
     if (fieldType === 'enum' && field.enumValues.length > 0) {
       return (
         <div key={field.name} className={styles.formField}>
-          <label htmlFor={`plugin-field-${field.name}`}>{field.name}</label>
+          <label htmlFor={inputId}>{label}</label>
           <Select
-            id={`plugin-field-${field.name}`}
+            id={inputId}
             value={textValue}
             options={field.enumValues.map((item) => ({ value: item, label: item }))}
-            onChange={(nextValue) =>
-              updateDraft((current) => ({
-                ...current,
-                values: { ...current.values, [field.name]: nextValue },
-                errors: { ...current.errors, [field.name]: '' },
-                touchedFields: { ...current.touchedFields, [field.name]: true },
-              }))
-            }
+            onChange={(nextValue) => touchField(field.name, nextValue)}
             placeholder={t('plugin_management.select_placeholder')}
           />
-          {field.description ? <div className={styles.fieldHint}>{field.description}</div> : null}
+          {hasHint ? <div className={styles.fieldHint}>{hint}</div> : null}
           {errorText ? <div className={styles.fieldError}>{errorText}</div> : null}
         </div>
       );
@@ -453,299 +572,470 @@ export function PluginsPage() {
     if (fieldType === 'array' || fieldType === 'object') {
       return (
         <div key={field.name} className={styles.formField}>
-          <label htmlFor={`plugin-field-${field.name}`}>{field.name}</label>
+          <label htmlFor={inputId}>{label}</label>
           <textarea
-            id={`plugin-field-${field.name}`}
+            id={inputId}
             className={styles.textarea}
             value={textValue}
             onChange={handleFieldTextChange(field.name)}
             placeholder={fieldType === 'array' ? '[]' : '{}'}
             spellCheck={false}
           />
-          {field.description ? <div className={styles.fieldHint}>{field.description}</div> : null}
+          {hasHint ? <div className={styles.fieldHint}>{hint}</div> : null}
           {errorText ? <div className={styles.fieldError}>{errorText}</div> : null}
         </div>
       );
     }
 
+    const secret = isSecretConfigField(field);
+    const revealed = revealedSecrets.has(field.name);
+    const secretLabel = t(
+      revealed ? 'plugin_management.hide_secret' : 'plugin_management.show_secret',
+      { field: label }
+    );
+
     return (
       <Input
         key={field.name}
-        id={`plugin-field-${field.name}`}
-        label={field.name}
+        id={inputId}
+        label={label}
+        type={secret && !revealed ? 'password' : 'text'}
         value={textValue}
         onChange={handleFieldTextChange(field.name)}
         inputMode={fieldType === 'integer' || fieldType === 'number' ? 'decimal' : undefined}
-        hint={field.description || undefined}
+        autoComplete={secret ? 'off' : undefined}
+        hint={hasHint ? hint : undefined}
         error={errorText || undefined}
+        rightElement={
+          secret ? (
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              onClick={() => toggleSecret(field.name)}
+              aria-label={secretLabel}
+              title={secretLabel}
+            >
+              {revealed ? <IconEyeOff size={16} /> : <IconEye size={16} />}
+            </button>
+          ) : undefined
+        }
       />
     );
   };
 
-  const savingConfig = Boolean(editingPlugin && mutatingID === editingPlugin.id);
+  /* ---------- derived view ---------- */
+
+  const meta: PageHeaderMetaSegment[] = data
+    ? [
+        {
+          key: 'discovered',
+          text: t('plugin_management.meta_discovered', { count: plugins.length }),
+        },
+        {
+          key: 'running',
+          text: t('plugin_management.meta_running', { count: counts.running }),
+          tone: counts.running > 0 ? 'ok' : 'quiet',
+        },
+      ]
+    : [];
+  if (data && counts.attention > 0) {
+    meta.push({
+      key: 'attention',
+      text: t('plugin_management.meta_attention', { count: counts.attention }),
+      tone: 'attention',
+    });
+  }
+  if (data && counts.updates > 0) {
+    meta.push({
+      key: 'updates',
+      text: t('plugin_management.meta_updates', { count: counts.updates }),
+      tone: 'warning',
+    });
+  }
+
+  const toggleStatusFilter = (next: PluginStatusFilter) =>
+    setStatusFilter((current) => (current === next && next !== 'all' ? 'all' : next));
+
+  const summaryCards: PluginSummaryCard[] = [
+    {
+      key: 'running',
+      label: t('plugin_management.summary_running'),
+      count: counts.running,
+      tone: 'ok',
+      active: statusFilter === 'running',
+      onClick: () => toggleStatusFilter('running'),
+    },
+    {
+      key: 'disabled',
+      label: t('plugin_management.summary_disabled'),
+      count: counts.disabled,
+      tone: 'muted',
+      active: statusFilter === 'disabled',
+      onClick: () => toggleStatusFilter('disabled'),
+    },
+    {
+      key: 'attention',
+      label: t('plugin_management.summary_attention'),
+      count: counts.attention,
+      tone: counts.attention > 0 ? 'warning' : 'muted',
+      active: statusFilter === 'attention',
+      onClick: () => toggleStatusFilter('attention'),
+    },
+  ];
+  if (storeEntryList) {
+    summaryCards.push({
+      key: 'updates',
+      label: t('plugin_management.summary_updates'),
+      count: counts.updates,
+      tone: counts.updates > 0 ? 'accent' : 'muted',
+      onClick: () => navigate('/plugin-store?filter=updates'),
+    });
+  }
+
+  const filterCounts: Record<PluginStatusFilter, number> = {
+    all: plugins.length,
+    running: counts.running,
+    disabled: counts.disabled,
+    attention: counts.attention,
+  };
+
+  const restartNames = restartRequiredIDs.map((id) => {
+    const plugin = plugins.find((item) => item.id === id);
+    return plugin ? getPluginTitle(plugin) : id;
+  });
+
+  const hasActiveFilters = Boolean(filter.trim()) || statusFilter !== 'all';
+  const actionBusy = Boolean(mutatingID || deletingID);
+
+  const renderRow = (plugin: PluginListEntry) => {
+    const title = getPluginTitle(plugin);
+    const logo = resolvePluginAsset(getPluginLogo(plugin, storeEntryList ?? []));
+    const github = plugin.metadata?.githubRepository.trim();
+    const status = statusByID.get(plugin.id) ?? derivePluginStatus(plugin, pluginsEnabled);
+    const version = plugin.metadata?.version;
+    const author = plugin.metadata?.author;
+    const pages = plugin.menus
+      .map((menu, index) => ({ menu, index }))
+      .filter(({ menu }) => menu.path.trim());
+    const menuItems = [
+      ...(github
+        ? [
+            {
+              key: 'repository',
+              label: t('plugin_management.open_repository'),
+              onSelect: () => window.open(github, '_blank', 'noopener,noreferrer'),
+            },
+          ]
+        : []),
+      {
+        key: 'delete',
+        label: t('plugin_management.delete_plugin'),
+        danger: true,
+        disabled: !connected || actionBusy,
+        loading: deletingID === plugin.id,
+        onSelect: () => handleDeletePlugin(plugin),
+      },
+    ];
+
+    return (
+      <article
+        key={plugin.id}
+        id={`plugin-row-${plugin.id}`}
+        className={`${styles.row} ${highlightedID === plugin.id ? styles.rowHighlighted : ''}`}
+      >
+        <PluginLogo src={logo} />
+
+        <div className={styles.info}>
+          <div className={styles.nameLine}>
+            <h2>{title}</h2>
+            <span className={`${styles.chip} ${STATUS_CHIP_CLASS[status.kind]}`}>
+              {t(STATUS_LABEL_KEY[status.kind])}
+            </span>
+            {plugin.supportsOAuth ? (
+              <span className={styles.tag}>{t('plugin_management.oauth')}</span>
+            ) : null}
+          </div>
+          <div className={styles.metaLine}>
+            <span className={styles.metaId}>{plugin.id}</span>
+            {version ? <span>v{version.replace(/^v/i, '')}</span> : null}
+            {author ? <span>{author}</span> : null}
+          </div>
+          {status.reasonKey ? (
+            <div className={styles.reason}>
+              <span>{t(status.reasonKey)}</span>
+              {status.kind === 'needsConfig' ? (
+                <button
+                  type="button"
+                  className={styles.reasonAction}
+                  onClick={() => openConfigSheet(plugin)}
+                  disabled={!connected || actionBusy}
+                >
+                  {t('plugin_management.configure')}
+                </button>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+
+        <div className={styles.actions}>
+          {pages.length > 0 ? (
+            plugin.effectiveEnabled ? (
+              <PluginOverflowMenu
+                label={t('plugin_management.pages_menu_label', { name: title })}
+                items={pages.map(({ menu, index }) => ({
+                  key: `${plugin.id}-${index}`,
+                  label: menu.menu.trim() || title,
+                  onSelect: () => navigate(buildPluginResourceRoute(plugin.id, index)),
+                }))}
+              >
+                {t('plugin_management.pages_count', { count: pages.length })}
+              </PluginOverflowMenu>
+            ) : (
+              <span className={styles.pagesMuted}>
+                {t('plugin_management.pages_count', { count: pages.length })}
+              </span>
+            )
+          ) : null}
+          <ToggleSwitch
+            checked={plugin.enabled}
+            onChange={(enabled) => handleTogglePlugin(plugin, enabled)}
+            disabled={!connected || actionBusy}
+            ariaLabel={t('plugin_management.toggle_aria', { name: title })}
+          />
+          <Button
+            variant="secondary"
+            size="sm"
+            iconOnly
+            onClick={() => openConfigSheet(plugin)}
+            disabled={!connected || actionBusy}
+            aria-label={t('plugin_management.edit_config_aria', { name: title })}
+            title={t('plugin_management.edit_config')}
+          >
+            <IconSettings size={14} />
+          </Button>
+          <PluginOverflowMenu
+            label={t('plugin_management.more_actions', { name: title })}
+            items={menuItems}
+          />
+        </div>
+      </article>
+    );
+  };
 
   return (
     <div className={styles.page}>
-      {/* ── Page Header ── */}
-      <div className={styles.pageHeader}>
-        <h1 className={styles.title}>{t('plugin_management.title')}</h1>
-        <p className={styles.description}>{t('plugin_management.description')}</p>
-      </div>
-
-      {/* ── Alerts ── */}
-      {error ? <div className={styles.errorBox}>{error}</div> : null}
-
-      {data && !data.pluginsEnabled ? (
-        <div className={styles.warningBox}>{t('plugin_management.global_disabled_hint')}</div>
-      ) : null}
-
-      {/* ── Status Bar ── */}
-      {data ? (
-        <div className={styles.statusBar}>
-          <div className={styles.statusPill}>
-            <span
-              className={`${styles.statusDot} ${
-                data.pluginsEnabled ? styles.statusDotOn : styles.statusDotOff
-              }`}
-            />
-            <span className={styles.statusLabel}>{t('plugin_management.global_status')}</span>
-            <span className={styles.statusValue}>
-              {data.pluginsEnabled
-                ? t('plugin_management.global_enabled')
-                : t('plugin_management.global_disabled')}
-            </span>
-          </div>
-
-          <span className={styles.statusDivider} />
-
-          <div className={styles.statusPill}>
-            <span className={styles.statusLabel}>{t('plugin_management.plugins_dir')}</span>
-            <span
-              className={`${styles.statusValue} ${styles.statusPathValue}`}
-              title={data.pluginsDir || 'plugins'}
+      <PageHeader
+        revealRef={headerRef}
+        title={t('plugin_management.title')}
+        meta={meta}
+        description={data ? undefined : t('plugin_management.description')}
+        actions={
+          <>
+            <Button
+              variant="secondary"
+              shape="pill"
+              size="sm"
+              onClick={() => navigate('/plugin-store')}
             >
-              {data.pluginsDir || 'plugins'}
-            </span>
-          </div>
+              <IconSidebarStore size={14} />
+              {t('plugin_store.title')}
+            </Button>
+            <Button
+              shape="pill"
+              onClick={loadPlugins}
+              disabled={!connected || loading || actionBusy}
+            >
+              <IconRefreshCw size={14} className={loading ? 'spinning' : undefined} />
+              {t('plugin_management.refresh')}
+            </Button>
+          </>
+        }
+      />
 
-          <span className={styles.statusDivider} />
-
-          <div className={styles.statusPill}>
-            <span className={styles.statusLabel}>{t('plugin_management.discovered')}</span>
-            <span className={styles.statusValue}>{pluginStats.discovered}</span>
-          </div>
-
-          <span className={styles.statusDivider} />
-
-          <div className={styles.statusPill}>
-            <span className={styles.statusLabel}>{t('plugin_management.effective')}</span>
-            <span className={styles.statusValue}>
-              {pluginStats.effective}/{pluginStats.registered}
-            </span>
-          </div>
+      {error || (data && !data.pluginsEnabled) || restartNames.length > 0 ? (
+        <div className={styles.alerts}>
+          <ErrorBanner
+            message={error}
+            onRetry={connected ? loadPlugins : undefined}
+            retrying={loading}
+          />
+          {data && !data.pluginsEnabled ? (
+            <PluginNotice>{t('plugin_management.global_disabled_hint')}</PluginNotice>
+          ) : null}
+          {restartNames.length > 0 ? (
+            <PluginNotice
+              action={
+                <Button variant="ghost" size="xs" onClick={clearRestartRequired}>
+                  {t('plugin_management.restart_dismiss')}
+                </Button>
+              }
+            >
+              {t('plugin_management.restart_required_banner', { plugins: restartNames.join(', ') })}
+            </PluginNotice>
+          ) : null}
         </div>
       ) : null}
 
-      {/* ── Toolbar ── */}
+      {data ? (
+        <PluginSummaryCards cards={summaryCards} ariaLabel={t('plugin_management.summary_label')} />
+      ) : null}
+
       <div className={styles.toolbar}>
-        <Input
-          type="search"
+        <SearchField
+          ref={searchInputRef}
           value={filter}
-          onChange={(event) => setFilter(event.target.value)}
+          onChange={setFilter}
           placeholder={t('plugin_management.search_placeholder')}
-          aria-label={t('plugin_management.search_label')}
-          rightElement={<IconSearch size={16} />}
+          ariaLabel={t('plugin_management.search_label')}
+          disabled={loading && !data}
         />
-        <Button
-          variant="secondary"
-          size="sm"
-          onClick={loadPlugins}
-          disabled={!connected || loading || Boolean(mutatingID || deletingID)}
-          loading={loading}
+        <div
+          className={styles.filterChips}
+          role="group"
+          aria-label={t('plugin_management.filter_label')}
         >
-          <IconRefreshCw size={16} />
-          {t('plugin_management.refresh')}
-        </Button>
-        <Button variant="secondary" size="sm" onClick={() => navigate('/plugin-store')}>
-          <IconSidebarStore size={16} />
-          {t('plugin_store.title')}
-        </Button>
+          {STATUS_FILTERS.map((key) => (
+            <button
+              key={key}
+              type="button"
+              className={`${styles.filterChip} ${statusFilter === key ? styles.filterChipActive : ''}`}
+              onClick={() => setStatusFilter(key)}
+              aria-pressed={statusFilter === key}
+            >
+              {t(`plugin_management.filter_${key}`)}
+              <span className={styles.filterChipCount}>{filterCounts[key]}</span>
+            </button>
+          ))}
+        </div>
       </div>
 
-      {/* ── Plugin List ── */}
-      {loading ? (
-        <div className={styles.pluginList}>
-          {Array.from({ length: 4 }, (_, index) => (
+      {loading && !data ? (
+        <div className={styles.list} aria-busy="true">
+          {Array.from({ length: SKELETON_ROWS }, (_, index) => (
             <div key={index} className={styles.skeletonRow}>
-              <div className={styles.skeletonAvatar} />
+              <Skeleton width={40} height={40} rounded={10} />
               <div className={styles.skeletonText}>
-                <div className={styles.skeletonLine} />
-                <div className={styles.skeletonLine} />
+                <Skeleton width="38%" height={14} />
+                <Skeleton width="62%" height={10} />
               </div>
             </div>
           ))}
         </div>
+      ) : plugins.length === 0 ? (
+        error ? null : (
+          <EmptyState
+            title={t('plugin_management.no_plugins')}
+            description={t('plugin_management.no_plugins_desc')}
+            action={
+              <Button variant="secondary" size="sm" onClick={() => navigate('/plugin-store')}>
+                <IconSidebarStore size={16} />
+                {t('plugin_management.browse_store')}
+              </Button>
+            }
+          />
+        )
       ) : visiblePlugins.length === 0 ? (
         <EmptyState
-          title={t('plugin_management.no_plugins')}
-          description={t('plugin_management.no_plugins_desc')}
+          title={t('plugin_management.no_matches')}
+          description={t('plugin_management.no_matches_desc')}
           action={
-            <Button variant="secondary" size="sm" onClick={loadPlugins} disabled={!connected}>
-              <IconRefreshCw size={16} />
-              {t('plugin_management.refresh')}
-            </Button>
+            hasActiveFilters ? (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => {
+                  setFilter('');
+                  setStatusFilter('all');
+                  searchInputRef.current?.focus();
+                }}
+              >
+                {t('plugin_management.clear_filters')}
+              </Button>
+            ) : undefined
           }
         />
       ) : (
-        <div className={styles.pluginList}>
-          {visiblePlugins.map((plugin) => {
-            const logo = resolvePluginAsset(getPluginLogo(plugin, logoEntries));
-            const github = plugin.metadata?.githubRepository.trim();
-            const openingConfig = openingConfigID === plugin.id;
-            const deletingPlugin = deletingID === plugin.id;
-            const actionBusy = Boolean(mutatingID || openingConfigID || deletingID);
-            const version = plugin.metadata?.version;
-            const author = plugin.metadata?.author;
-
-            return (
-              <article key={plugin.id} className={styles.pluginRow}>
-                {/* Logo */}
-                <div className={styles.logoBox} aria-hidden="true">
-                  <PluginCardLogo key={logo} src={logo} />
-                </div>
-
-                {/* Info */}
-                <div className={styles.pluginInfo}>
-                  <div className={styles.pluginName}>
-                    <h2>{getPluginTitle(plugin)}</h2>
-                    <div className={styles.badgeRow}>
-                      <span
-                        className={
-                          plugin.effectiveEnabled ? styles.badgeSuccess : styles.badgeMuted
-                        }
-                      >
-                        {plugin.effectiveEnabled
-                          ? t('plugin_management.status_effective')
-                          : t('plugin_management.status_inactive')}
-                      </span>
-                      <span className={plugin.registered ? styles.badge : styles.badgeWarning}>
-                        {plugin.registered
-                          ? t('plugin_management.registered')
-                          : t('plugin_management.not_registered')}
-                      </span>
-                      <span className={plugin.configured ? styles.badge : styles.badgeMuted}>
-                        {plugin.configured
-                          ? t('plugin_management.configured')
-                          : t('plugin_management.not_configured')}
-                      </span>
-                      {plugin.supportsOAuth ? (
-                        <span className={styles.badge}>{t('plugin_management.oauth')}</span>
-                      ) : null}
-                    </div>
-                  </div>
-
-                  <span className={styles.pluginId}>{plugin.id}</span>
-
-                  {version || author || plugin.path ? (
-                    <div className={styles.pluginMeta}>
-                      {version ? (
-                        <span className={styles.metaItem}>
-                          <strong>{version}</strong>
-                        </span>
-                      ) : null}
-                      {version && author ? (
-                        <span className={styles.metaDot} aria-hidden="true" />
-                      ) : null}
-                      {author ? <span className={styles.metaItem}>{author}</span> : null}
-                      {(version || author) && plugin.path ? (
-                        <span className={styles.metaDot} aria-hidden="true" />
-                      ) : null}
-                      {plugin.path ? (
-                        <span
-                          className={`${styles.metaItem} ${styles.metaPath}`}
-                          title={plugin.path}
-                        >
-                          {plugin.path}
-                        </span>
-                      ) : null}
-                    </div>
-                  ) : null}
-                </div>
-
-                {/* Actions */}
-                <div className={styles.rowActions}>
-                  <ToggleSwitch
-                    checked={plugin.enabled}
-                    onChange={(enabled) => handleTogglePlugin(plugin, enabled)}
-                    disabled={!connected || actionBusy}
-                    ariaLabel={t('plugin_management.enabled')}
-                  />
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    onClick={() => openConfigSheet(plugin)}
-                    disabled={!connected || actionBusy}
-                    loading={openingConfig}
-                  >
-                    <IconSettings size={14} />
-                    {t('plugin_management.edit_config')}
-                  </Button>
-                  <Button
-                    variant="danger"
-                    size="sm"
-                    onClick={() => handleDeletePlugin(plugin)}
-                    disabled={!connected || actionBusy}
-                    loading={deletingPlugin}
-                    title={t('plugin_management.delete_plugin')}
-                    aria-label={t('plugin_management.delete_plugin')}
-                  >
-                    <IconTrash2 size={14} />
-                    {t('plugin_management.delete_plugin')}
-                  </Button>
-                  {github ? (
-                    <a
-                      className={styles.iconLink}
-                      href={github}
-                      target="_blank"
-                      rel="noreferrer"
-                      title={t('plugin_management.open_repository')}
-                      aria-label={t('plugin_management.open_repository')}
-                    >
-                      <IconGithub size={14} />
-                    </a>
-                  ) : null}
-                </div>
-              </article>
-            );
-          })}
-        </div>
+        <div className={styles.list}>{visiblePlugins.map(renderRow)}</div>
       )}
 
-      {/* ── Config Sheet ── */}
+      {data ? (
+        <p className={styles.footerLine}>
+          {t('plugin_management.plugins_dir')}: <code>{data.pluginsDir || 'plugins'}</code>
+        </p>
+      ) : null}
+
       <Sheet
-        open={Boolean(editingPlugin && draft)}
+        open={Boolean(editingPlugin)}
         onClose={closeConfigSheet}
+        confirmClose={confirmSheetClose}
         size="lg"
         title={
-          editingPlugin
-            ? t('plugin_management.config_title', { name: getPluginTitle(editingPlugin) })
-            : t('plugin_management.edit_config')
+          editingPlugin ? (
+            <>
+              {t('plugin_management.config_title', { name: getPluginTitle(editingPlugin) })}
+              {draftDirty ? (
+                <span className={styles.dirtyMarker} title={t('plugin_management.unsaved_marker')}>
+                  <span aria-hidden="true"> •</span>
+                  <span className={styles.srOnly}> {t('plugin_management.unsaved_marker')}</span>
+                </span>
+              ) : null}
+            </>
+          ) : (
+            t('plugin_management.edit_config')
+          )
         }
-        description={editingPlugin?.id}
+        description={
+          editingPlugin ? (
+            <span className={styles.sheetMeta}>
+              {editingPlugin.id}
+              {editingPlugin.path ? ` · ${editingPlugin.path}` : ''}
+            </span>
+          ) : undefined
+        }
         closeDisabled={savingConfig}
         footer={
           <div className={styles.sheetFooter}>
-            <Button variant="secondary" onClick={closeConfigSheet} disabled={savingConfig}>
+            <Button
+              variant="secondary"
+              onClick={() => {
+                void confirmSheetClose().then((ok) => {
+                  if (ok) closeConfigSheet();
+                });
+              }}
+              disabled={savingConfig}
+            >
               {t('common.cancel')}
             </Button>
-            <Button onClick={handleSaveConfig} loading={savingConfig}>
+            <Button
+              onClick={handleSaveConfig}
+              loading={savingConfig}
+              disabled={!draft || draftLoading}
+            >
               {t('common.save')}
             </Button>
           </div>
         }
       >
+        {editingPlugin && draftError ? (
+          <ErrorBanner
+            message={draftError}
+            onRetry={() => void loadDraft(editingPlugin)}
+            retrying={draftLoading}
+          />
+        ) : null}
+        {editingPlugin && !draft && !draftError ? (
+          <div className={styles.sheetSkeleton} aria-busy="true">
+            <Skeleton width="30%" height={16} />
+            <Skeleton height={52} />
+            <Skeleton height={44} />
+            <Skeleton width="30%" height={16} />
+            <Skeleton height={44} />
+            <Skeleton height={44} />
+          </div>
+        ) : null}
         {draft && editingPlugin ? (
           <div className={styles.configForm}>
+            {sheetNotice ? <PluginNotice>{sheetNotice}</PluginNotice> : null}
             <section className={styles.formSection}>
               <h3>{t('plugin_management.base_settings')}</h3>
               <div className={styles.fieldRow}>
@@ -758,11 +1048,7 @@ export function PluginsPage() {
                 <ToggleSwitch
                   checked={draft.enabled}
                   onChange={(enabled) =>
-                    updateDraft((current) => ({
-                      ...current,
-                      enabled,
-                      enabledTouched: true,
-                    }))
+                    updateDraft((current) => ({ ...current, enabled, enabledTouched: true }))
                   }
                   ariaLabel={t('plugin_management.enabled')}
                 />

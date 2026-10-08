@@ -1,10 +1,21 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
-import { Modal } from '@/components/ui/Modal';
+import { Collapsible } from '@/components/ui/Collapsible';
+import { ErrorBanner } from '@/components/ui/ErrorBanner';
+import { PageHeader, type PageHeaderMetaSegment } from '@/components/ui/PageHeader';
+import { SearchField } from '@/components/ui/SearchField';
+import { Skeleton } from '@/components/ui/Skeleton';
 import { ToggleSwitch } from '@/components/ui/ToggleSwitch';
-import { IconGithub, IconBookOpen, IconExternalLink, IconCode } from '@/components/ui/icons';
+import {
+  IconBookOpen,
+  IconCode,
+  IconExternalLink,
+  IconGithub,
+  IconRefreshCw,
+} from '@/components/ui/icons';
+import { useRevealGroup } from '@/hooks/motion';
 import {
   useAuthStore,
   useConfigStore,
@@ -14,7 +25,8 @@ import {
 } from '@/stores';
 import { configApi, versionApi } from '@/services/api';
 import { useApiKeysForModels } from '@/hooks/useApiKeysForModels';
-import { formatDateTimeValue } from '@/utils/format';
+import { copyToClipboard } from '@/utils/clipboard';
+import { formatDateTimeValue, maskApiKey } from '@/utils/format';
 import { classifyModels } from '@/utils/models';
 import { STORAGE_KEY_AUTH } from '@/utils/constants';
 import { INLINE_LOGO_JPEG } from '@/assets/logoInline';
@@ -49,6 +61,29 @@ const MODEL_CATEGORY_ICONS: Record<string, string | { light: string; dark: strin
   minimax: iconMinimax,
 };
 
+const RELEASES_URL = 'https://github.com/router-for-me/CLIProxyAPI/releases';
+
+const LINKS = [
+  {
+    key: 'main',
+    href: 'https://github.com/router-for-me/CLIProxyAPI',
+    labelKey: 'system_info.link_main_repo',
+    Icon: IconGithub,
+  },
+  {
+    key: 'webui',
+    href: 'https://github.com/router-for-me/Cli-Proxy-API-Management-Center',
+    labelKey: 'system_info.link_webui_repo',
+    Icon: IconCode,
+  },
+  {
+    key: 'docs',
+    href: 'https://help.router-for.me/',
+    labelKey: 'system_info.link_docs',
+    Icon: IconBookOpen,
+  },
+] as const;
+
 const parseVersionSegments = (version?: string | null) => {
   if (!version) return null;
   const cleaned = version.trim().replace(/^v/i, '');
@@ -75,11 +110,36 @@ const compareVersions = (latest?: string | null, current?: string | null) => {
   return 0;
 };
 
+interface UpdateCheckState {
+  status: 'idle' | 'checking' | 'latest' | 'update' | 'unknown' | 'error';
+  latest: string;
+  checkedAt: number | null;
+  message: string;
+}
+
+const IDLE_UPDATE_CHECK: UpdateCheckState = {
+  status: 'idle',
+  latest: '',
+  checkedAt: null,
+  message: '',
+};
+
+// Survives navigation within the session so the result does not vanish when leaving the page.
+let updateCheckCache: UpdateCheckState = IDLE_UPDATE_CHECK;
+
+const errorText = (error: unknown) =>
+  error instanceof Error ? error.message : typeof error === 'string' ? error : '';
+
 export function SystemPage() {
   const { t, i18n } = useTranslation();
-  const { showNotification, showConfirmation } = useNotificationStore();
+  const showNotification = useNotificationStore((state) => state.showNotification);
+  const showConfirmation = useNotificationStore((state) => state.showConfirmation);
   const resolvedTheme = useThemeStore((state) => state.resolvedTheme);
-  const auth = useAuthStore();
+  const connectionStatus = useAuthStore((state) => state.connectionStatus);
+  const apiBase = useAuthStore((state) => state.apiBase);
+  const serverVersion = useAuthStore((state) => state.serverVersion);
+  const serverBuildDate = useAuthStore((state) => state.serverBuildDate);
+  const logout = useAuthStore((state) => state.logout);
   const config = useConfigStore((state) => state.config);
   const fetchConfig = useConfigStore((state) => state.fetchConfig);
   const clearCache = useConfigStore((state) => state.clearCache);
@@ -89,33 +149,45 @@ export function SystemPage() {
   const modelsLoading = useModelsStore((state) => state.loading);
   const modelsError = useModelsStore((state) => state.error);
   const fetchModelsFromStore = useModelsStore((state) => state.fetchModels);
+  const headerRef = useRevealGroup<HTMLElement>();
 
-  const [modelStatus, setModelStatus] = useState<{
-    type: 'success' | 'warning' | 'error' | 'muted';
-    message: string;
-  }>();
-  const [requestLogModalOpen, setRequestLogModalOpen] = useState(false);
-  const [requestLogDraft, setRequestLogDraft] = useState(false);
-  const [requestLogTouched, setRequestLogTouched] = useState(false);
+  const [modelsKey, setModelsKey] = useState('');
+  const [modelsKeyMissing, setModelsKeyMissing] = useState(false);
+  const [modelsFetchError, setModelsFetchError] = useState('');
+  const [modelSearch, setModelSearch] = useState('');
+  const [allGroupsOpen, setAllGroupsOpen] = useState<boolean | null>(null);
+  const [groupsResetKey, setGroupsResetKey] = useState(0);
   const [requestLogSaving, setRequestLogSaving] = useState(false);
-  const [checkingVersion, setCheckingVersion] = useState(false);
+  const [updateCheck, setUpdateCheck] = useState<UpdateCheckState>(updateCheckCache);
 
-  const versionTapCount = useRef(0);
-  const versionTapTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
+  const connected = connectionStatus === 'connected';
   const otherLabel = useMemo(
     () => (i18n.language?.toLowerCase().startsWith('zh') ? '其他' : 'Other'),
     [i18n.language]
   );
   const groupedModels = useMemo(() => classifyModels(models, { otherLabel }), [models, otherLabel]);
+  const filteredGroups = useMemo(() => {
+    const query = modelSearch.trim().toLowerCase();
+    if (!query) return groupedModels;
+    return groupedModels
+      .map((group) => ({
+        ...group,
+        items: group.items.filter((model) =>
+          `${model.name} ${model.alias ?? ''} ${model.description ?? ''}`
+            .toLowerCase()
+            .includes(query)
+        ),
+      }))
+      .filter((group) => group.items.length > 0);
+  }, [groupedModels, modelSearch]);
+
   const requestLogEnabled = config?.requestLog ?? false;
-  const requestLogDirty = requestLogDraft !== requestLogEnabled;
-  const canEditRequestLog = auth.connectionStatus === 'connected' && Boolean(config);
+  const canEditRequestLog = connected && Boolean(config);
 
   const appVersion = __APP_VERSION__ || t('system_info.version_unknown');
-  const apiVersion = auth.serverVersion || t('system_info.version_unknown');
+  const apiVersion = serverVersion || t('system_info.version_unknown');
   const buildTime =
-    formatDateTimeValue(auth.serverBuildDate, i18n.language) || t('system_info.version_unknown');
+    formatDateTimeValue(serverBuildDate, i18n.language) || t('system_info.version_unknown');
 
   const getIconForCategory = (categoryId: string): string | null => {
     const iconEntry = MODEL_CATEGORY_ICONS[categoryId];
@@ -127,47 +199,39 @@ export function SystemPage() {
   const resolveApiKeysForModels = useApiKeysForModels();
 
   const fetchModels = async ({ forceRefresh = false }: { forceRefresh?: boolean } = {}) => {
-    if (auth.connectionStatus !== 'connected') {
-      setModelStatus({
-        type: 'warning',
-        message: t('notification.connection_required'),
-      });
+    if (!connected || !apiBase) {
+      setModelsFetchError(t('notification.connection_required'));
       return;
     }
-
-    if (!auth.apiBase) {
-      showNotification(t('notification.connection_required'), 'warning');
-      return;
-    }
-
-    setModelStatus({ type: 'muted', message: t('system_info.models_loading') });
+    setModelsFetchError('');
     try {
       const apiKeys = await resolveApiKeysForModels({ force: forceRefresh });
-      const primaryKey = apiKeys[0];
-      const list = await fetchModelsFromStore(auth.apiBase, primaryKey, forceRefresh);
-      const hasModels = list.length > 0;
-      setModelStatus({
-        type: hasModels ? 'success' : 'warning',
-        message: hasModels
-          ? t('system_info.models_count', { count: list.length })
-          : t('system_info.models_empty'),
-      });
+      const primaryKey = apiKeys[0] ?? '';
+      setModelsKey(primaryKey);
+      setModelsKeyMissing(apiKeys.length === 0);
+      await fetchModelsFromStore(apiBase, primaryKey || undefined, forceRefresh);
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : typeof err === 'string' ? err : '';
-      const suffix = message ? `: ${message}` : '';
-      const text = `${t('system_info.models_error')}${suffix}`;
-      setModelStatus({ type: 'error', message: text });
+      const suffix = errorText(err) ? `: ${errorText(err)}` : '';
+      setModelsFetchError(`${t('system_info.models_error')}${suffix}`);
     }
+  };
+
+  const handleCopyModel = async (name: string) => {
+    const ok = await copyToClipboard(name);
+    showNotification(
+      ok ? t('system_info.model_copied', { name }) : t('system_info.model_copy_failed'),
+      ok ? 'success' : 'error'
+    );
   };
 
   const handleClearLoginStorage = () => {
     showConfirmation({
-      title: t('system_info.clear_login_title', { defaultValue: 'Clear Login Storage' }),
+      title: t('system_info.clear_login_title'),
       message: t('system_info.clear_login_confirm'),
       variant: 'danger',
-      confirmText: t('common.confirm'),
+      confirmText: t('system_info.clear_login_button'),
       onConfirm: () => {
-        auth.logout();
+        logout();
         if (typeof localStorage === 'undefined') return;
         const keysToRemove = [STORAGE_KEY_AUTH, 'isLoggedIn', 'apiBase', 'apiUrl', 'managementKey'];
         keysToRemove.forEach((key) => localStorage.removeItem(key));
@@ -176,56 +240,18 @@ export function SystemPage() {
     });
   };
 
-  const openRequestLogModal = useCallback(() => {
-    setRequestLogTouched(false);
-    setRequestLogDraft(requestLogEnabled);
-    setRequestLogModalOpen(true);
-  }, [requestLogEnabled]);
-
-  const handleInfoVersionTap = useCallback(() => {
-    versionTapCount.current += 1;
-    if (versionTapTimer.current) {
-      clearTimeout(versionTapTimer.current);
-    }
-
-    if (versionTapCount.current >= 7) {
-      versionTapCount.current = 0;
-      versionTapTimer.current = null;
-      openRequestLogModal();
-      return;
-    }
-
-    versionTapTimer.current = setTimeout(() => {
-      versionTapCount.current = 0;
-      versionTapTimer.current = null;
-    }, 1500);
-  }, [openRequestLogModal]);
-
-  const handleRequestLogClose = useCallback(() => {
-    setRequestLogModalOpen(false);
-    setRequestLogTouched(false);
-  }, []);
-
-  const handleRequestLogSave = async () => {
-    if (!canEditRequestLog) return;
-    if (!requestLogDirty) {
-      setRequestLogModalOpen(false);
-      return;
-    }
-
+  const handleRequestLogChange = async (next: boolean) => {
+    if (!canEditRequestLog || requestLogSaving) return;
     const previous = requestLogEnabled;
     setRequestLogSaving(true);
-    updateConfigValue('request-log', requestLogDraft);
-
+    updateConfigValue('request-log', next);
     try {
-      await configApi.updateRequestLog(requestLogDraft);
+      await configApi.updateRequestLog(next);
       clearCache('request-log');
       showNotification(t('notification.request_log_updated'), 'success');
-      setRequestLogModalOpen(false);
-    } catch (error: unknown) {
-      const message =
-        error instanceof Error ? error.message : typeof error === 'string' ? error : '';
+    } catch (err: unknown) {
       updateConfigValue('request-log', previous);
+      const message = errorText(err);
       showNotification(
         `${t('notification.update_failed')}${message ? `: ${message}` : ''}`,
         'error'
@@ -235,38 +261,56 @@ export function SystemPage() {
     }
   };
 
+  const applyUpdateCheck = (next: UpdateCheckState) => {
+    updateCheckCache = next;
+    setUpdateCheck(next);
+  };
+
   const handleVersionCheck = useCallback(async () => {
-    setCheckingVersion(true);
+    applyUpdateCheck({ ...updateCheckCache, status: 'checking', message: '' });
+    const checkedAt = Date.now();
     try {
       const data = await versionApi.checkLatest();
       const latestRaw = data?.['latest-version'] ?? data?.latest_version ?? data?.latest ?? '';
       const latest = typeof latestRaw === 'string' ? latestRaw : String(latestRaw ?? '');
-      const comparison = compareVersions(latest, auth.serverVersion);
-
       if (!latest) {
-        showNotification(t('system_info.version_check_error'), 'error');
+        applyUpdateCheck({
+          status: 'error',
+          latest: '',
+          checkedAt,
+          message: t('system_info.version_check_error'),
+        });
         return;
       }
-
+      const comparison = compareVersions(latest, serverVersion);
       if (comparison === null) {
-        showNotification(t('system_info.version_current_missing'), 'warning');
+        applyUpdateCheck({
+          status: 'unknown',
+          latest,
+          checkedAt,
+          message: t('system_info.version_current_missing'),
+        });
         return;
       }
-
-      if (comparison > 0) {
-        showNotification(t('system_info.version_update_available', { version: latest }), 'warning');
-      } else {
-        showNotification(t('system_info.version_is_latest'), 'success');
-      }
-    } catch (error: unknown) {
-      const message =
-        error instanceof Error ? error.message : typeof error === 'string' ? error : '';
-      const suffix = message ? `: ${message}` : '';
-      showNotification(`${t('system_info.version_check_error')}${suffix}`, 'error');
-    } finally {
-      setCheckingVersion(false);
+      applyUpdateCheck({
+        status: comparison > 0 ? 'update' : 'latest',
+        latest,
+        checkedAt,
+        message:
+          comparison > 0
+            ? t('system_info.version_update_available', { version: latest })
+            : t('system_info.version_is_latest'),
+      });
+    } catch (err: unknown) {
+      const suffix = errorText(err) ? `: ${errorText(err)}` : '';
+      applyUpdateCheck({
+        status: 'error',
+        latest: '',
+        checkedAt,
+        message: `${t('system_info.version_check_error')}${suffix}`,
+      });
     }
-  }, [auth.serverVersion, showNotification, t]);
+  }, [serverVersion, t]);
 
   useEffect(() => {
     fetchConfig().catch(() => {
@@ -275,236 +319,269 @@ export function SystemPage() {
   }, [fetchConfig]);
 
   useEffect(() => {
-    if (requestLogModalOpen && !requestLogTouched) {
-      setRequestLogDraft(requestLogEnabled);
-    }
-  }, [requestLogModalOpen, requestLogTouched, requestLogEnabled]);
-
-  useEffect(() => {
-    return () => {
-      if (versionTapTimer.current) {
-        clearTimeout(versionTapTimer.current);
-      }
-    };
-  }, []);
-
-  useEffect(() => {
     fetchModels();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [auth.connectionStatus, auth.apiBase]);
+  }, [connectionStatus, apiBase]);
+
+  const meta: PageHeaderMetaSegment[] = [
+    { key: 'ui', text: /^v?\d/i.test(appVersion) ? `UI v${appVersion.replace(/^v/i, '')}` : `UI ${appVersion}` },
+    {
+      key: 'api',
+      text: `API ${serverVersion ? `v${serverVersion.replace(/^v/i, '')}` : t('system_info.version_unknown')}`,
+    },
+    {
+      key: 'conn',
+      text: t(`common.${connectionStatus}_status`),
+      tone: connected ? 'ok' : 'attention',
+    },
+  ];
+
+  const checkedAtText = updateCheck.checkedAt
+    ? formatDateTimeValue(new Date(updateCheck.checkedAt).toISOString(), i18n.language)
+    : '';
+  const updateToneClass =
+    updateCheck.status === 'update'
+      ? styles.checkUpdate
+      : updateCheck.status === 'latest'
+        ? styles.checkLatest
+        : updateCheck.status === 'error'
+          ? styles.checkError
+          : styles.checkMuted;
+
+  const modelsEmptyTitle = modelsKeyMissing
+    ? t('system_info.models_empty_no_key')
+    : t('system_info.models_empty');
+  const modelsEmptyDesc = modelsKeyMissing
+    ? t('system_info.models_empty_no_key_desc')
+    : t('system_info.models_empty_desc');
 
   return (
-    <div className={styles.container}>
-      <h1 className={styles.pageTitle}>{t('system_info.title')}</h1>
-      <div className={styles.content}>
+    <div className={styles.page}>
+      <PageHeader revealRef={headerRef} title={t('system_info.title')} meta={meta} />
+
+      <div className={styles.grid}>
         <Card className={styles.aboutCard}>
           <div className={styles.aboutHeader}>
-            <img src={INLINE_LOGO_JPEG} alt="CPAMC" className={styles.aboutLogo} />
+            <img src={INLINE_LOGO_JPEG} alt="" className={styles.aboutLogo} />
             <div className={styles.aboutTitle}>{t('system_info.about_title')}</div>
           </div>
-
-          <div className={styles.aboutInfoGrid}>
-            <button
-              type="button"
-              className={`${styles.infoTile} ${styles.tapTile}`}
-              onClick={handleInfoVersionTap}
-            >
-              <div className={styles.tileHeader}>
-                <div className={styles.tileLabel}>{t('footer.version')}</div>
-              </div>
+          <div className={styles.tiles}>
+            <div className={styles.tile}>
+              <div className={styles.tileLabel}>{t('system_info.tile_ui')}</div>
               <div className={styles.tileValue}>{appVersion}</div>
-            </button>
-
-            <div className={styles.infoTile}>
+            </div>
+            <div className={styles.tile}>
               <div className={styles.tileHeader}>
-                <div className={styles.tileLabel}>{t('footer.api_version')}</div>
+                <div className={styles.tileLabel}>{t('system_info.tile_api')}</div>
                 <Button
-                  type="button"
                   variant="ghost"
-                  size="sm"
-                  className={styles.tileAction}
+                  size="xs"
                   onClick={() => void handleVersionCheck()}
-                  loading={checkingVersion}
-                  title={t('system_info.version_check_button')}
-                  aria-label={t('system_info.version_check_button')}
+                  loading={updateCheck.status === 'checking'}
                 >
                   {t('system_info.version_check_button')}
                 </Button>
               </div>
               <div className={styles.tileValue}>{apiVersion}</div>
+              <div className={styles.tileSub}>
+                {t('system_info.build_time')}: {buildTime}
+              </div>
+              {updateCheck.status !== 'idle' && updateCheck.status !== 'checking' ? (
+                <div className={`${styles.checkResult} ${updateToneClass}`} role="status">
+                  <span>{updateCheck.message}</span>
+                  {updateCheck.status === 'update' ? (
+                    <a href={RELEASES_URL} target="_blank" rel="noopener noreferrer">
+                      {t('system_info.view_release')}
+                      <IconExternalLink size={12} aria-hidden="true" />
+                    </a>
+                  ) : null}
+                  {checkedAtText ? (
+                    <span className={styles.checkedAt}>
+                      {t('system_info.last_checked', { time: checkedAtText })}
+                    </span>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
-
-            <div className={styles.infoTile}>
-              <div className={styles.tileLabel}>{t('footer.build_date')}</div>
-              <div className={styles.tileValue}>{buildTime}</div>
-            </div>
-
-            <div className={styles.infoTile}>
-              <div className={styles.tileLabel}>{t('connection.status')}</div>
-              <div className={styles.tileValue}>{t(`common.${auth.connectionStatus}_status`)}</div>
-              <div className={styles.tileSub}>{auth.apiBase || '-'}</div>
-            </div>
+          </div>
+          <div className={styles.links}>
+            {LINKS.map(({ key, href, labelKey, Icon }) => (
+              <a
+                key={key}
+                href={href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={styles.link}
+              >
+                <Icon size={14} aria-hidden="true" />
+                {t(labelKey)}
+                <IconExternalLink size={11} aria-hidden="true" />
+              </a>
+            ))}
           </div>
         </Card>
 
-        <Card title={t('system_info.quick_links_title')}>
-          <p className={styles.sectionDescription}>{t('system_info.quick_links_desc')}</p>
-          <div className={styles.quickLinks}>
-            <a
-              href="https://github.com/router-for-me/CLIProxyAPI"
-              target="_blank"
-              rel="noopener noreferrer"
-              className={styles.linkCard}
-            >
-              <div className={`${styles.linkIcon} ${styles.github}`}>
-                <IconGithub size={22} />
-              </div>
-              <div className={styles.linkContent}>
-                <div className={styles.linkTitle}>
-                  {t('system_info.link_main_repo')}
-                  <IconExternalLink size={14} />
-                </div>
-                <div className={styles.linkDesc}>{t('system_info.link_main_repo_desc')}</div>
-              </div>
-            </a>
-
-            <a
-              href="https://github.com/router-for-me/Cli-Proxy-API-Management-Center"
-              target="_blank"
-              rel="noopener noreferrer"
-              className={styles.linkCard}
-            >
-              <div className={`${styles.linkIcon} ${styles.github}`}>
-                <IconCode size={22} />
-              </div>
-              <div className={styles.linkContent}>
-                <div className={styles.linkTitle}>
-                  {t('system_info.link_webui_repo')}
-                  <IconExternalLink size={14} />
-                </div>
-                <div className={styles.linkDesc}>{t('system_info.link_webui_repo_desc')}</div>
-              </div>
-            </a>
-
-            <a
-              href="https://help.router-for.me/"
-              target="_blank"
-              rel="noopener noreferrer"
-              className={styles.linkCard}
-            >
-              <div className={`${styles.linkIcon} ${styles.docs}`}>
-                <IconBookOpen size={22} />
-              </div>
-              <div className={styles.linkContent}>
-                <div className={styles.linkTitle}>
-                  {t('system_info.link_docs')}
-                  <IconExternalLink size={14} />
-                </div>
-                <div className={styles.linkDesc}>{t('system_info.link_docs_desc')}</div>
-              </div>
-            </a>
+        <Card title={t('system_info.session_title')} className={styles.sessionCard}>
+          <div className={styles.sessionRow}>
+            <span
+              className={`${styles.statusDot} ${connected ? styles.statusDotOn : styles.statusDotOff}`}
+              aria-hidden="true"
+            />
+            <span className={styles.sessionStatus}>{t(`common.${connectionStatus}_status`)}</span>
+            <code className={styles.sessionBase}>{apiBase || '-'}</code>
           </div>
-        </Card>
-
-        <Card
-          title={t('system_info.models_title')}
-          extra={
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => fetchModels({ forceRefresh: true })}
-              loading={modelsLoading}
-            >
-              {t('common.refresh')}
+          <p className={styles.sectionDescription}>{t('system_info.session_desc')}</p>
+          <div className={styles.sessionActions}>
+            <Button variant="secondary" size="sm" onClick={logout}>
+              {t('common.logout')}
             </Button>
-          }
-        >
-          <p className={styles.sectionDescription}>{t('system_info.models_desc')}</p>
-          {modelStatus && (
-            <div className={`status-badge ${modelStatus.type}`}>{modelStatus.message}</div>
-          )}
-          {modelsError && <div className="error-box">{modelsError}</div>}
-          {modelsLoading ? (
-            <div className="hint">{t('common.loading')}</div>
-          ) : models.length === 0 ? (
-            <div className="hint">{t('system_info.models_empty')}</div>
-          ) : (
-            <div className="item-list">
-              {groupedModels.map((group) => {
-                const iconSrc = getIconForCategory(group.id);
-                return (
-                  <div key={group.id} className="item-row">
-                    <div className="item-meta">
-                      <div className={styles.groupTitle}>
-                        {iconSrc && <img src={iconSrc} alt="" className={styles.groupIcon} />}
-                        <span className="item-title">{group.label}</span>
-                      </div>
-                      <div className="item-subtitle">
-                        {t('system_info.models_count', { count: group.items.length })}
-                      </div>
-                    </div>
-                    <div className={styles.modelTags}>
-                      {group.items.map((model) => (
-                        <span
-                          key={`${model.name}-${model.alias ?? 'default'}`}
-                          className={styles.modelTag}
-                          title={model.description || ''}
-                        >
-                          <span className={styles.modelName}>{model.name}</span>
-                          {model.alias && <span className={styles.modelAlias}>{model.alias}</span>}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </Card>
-
-        <Card title={t('system_info.clear_login_title')}>
-          <p className={styles.sectionDescription}>{t('system_info.clear_login_desc')}</p>
-          <div className={styles.clearLoginActions}>
-            <Button variant="danger" onClick={handleClearLoginStorage}>
+            <Button variant="danger-quiet" size="sm" onClick={handleClearLoginStorage}>
               {t('system_info.clear_login_button')}
             </Button>
           </div>
         </Card>
-      </div>
 
-      <Modal
-        open={requestLogModalOpen}
-        onClose={handleRequestLogClose}
-        title={t('basic_settings.request_log_title')}
-        footer={
-          <>
-            <Button variant="secondary" onClick={handleRequestLogClose} disabled={requestLogSaving}>
-              {t('common.cancel')}
-            </Button>
-            <Button
-              onClick={handleRequestLogSave}
-              loading={requestLogSaving}
-              disabled={!canEditRequestLog || !requestLogDirty}
-            >
-              {t('common.save')}
-            </Button>
-          </>
-        }
-      >
-        <div className="request-log-modal">
-          <div className="status-badge warning">{t('basic_settings.request_log_warning')}</div>
-          <ToggleSwitch
-            label={t('basic_settings.request_log_enable')}
-            labelPosition="left"
-            checked={requestLogDraft}
-            disabled={!canEditRequestLog || requestLogSaving}
-            onChange={(value) => {
-              setRequestLogDraft(value);
-              setRequestLogTouched(true);
-            }}
-          />
-        </div>
-      </Modal>
+        <Card title={t('system_info.diagnostics_title')} className={styles.diagnosticsCard}>
+          <div className={styles.toggleRow}>
+            <div className={styles.toggleText}>
+              <div className={styles.toggleLabel}>{t('basic_settings.request_log_enable')}</div>
+              <div className={styles.toggleHint}>{t('basic_settings.request_log_warning')}</div>
+            </div>
+            <ToggleSwitch
+              checked={requestLogEnabled}
+              onChange={(value) => void handleRequestLogChange(value)}
+              disabled={!canEditRequestLog || requestLogSaving}
+              ariaLabel={t('basic_settings.request_log_enable')}
+            />
+          </div>
+        </Card>
+
+        <Card
+          className={styles.modelsCard}
+          title={
+            <span className={styles.modelsTitle}>
+              {t('system_info.models_title')}
+              {models.length > 0 ? (
+                <span className={styles.modelsTotal}>{models.length}</span>
+              ) : null}
+            </span>
+          }
+          extra={
+            <div className={styles.modelsExtra}>
+              {groupedModels.length > 1 ? (
+                <Button
+                  variant="ghost"
+                  size="xs"
+                  onClick={() => {
+                    setAllGroupsOpen((current) => !(current ?? false));
+                    setGroupsResetKey((value) => value + 1);
+                  }}
+                >
+                  {t(allGroupsOpen ? 'system_info.collapse_all' : 'system_info.expand_all')}
+                </Button>
+              ) : null}
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => fetchModels({ forceRefresh: true })}
+                loading={modelsLoading}
+                disabled={!connected}
+              >
+                <IconRefreshCw size={14} />
+                {t('common.refresh')}
+              </Button>
+            </div>
+          }
+        >
+          <p className={styles.sectionDescription}>
+            {t('system_info.models_desc')}
+            {modelsKey ? (
+              <>
+                {' '}
+                <span className={styles.viaKey}>
+                  {t('system_info.models_via_key', { key: maskApiKey(modelsKey) })}
+                </span>
+              </>
+            ) : null}
+          </p>
+
+          {modelsFetchError || modelsError ? (
+            <ErrorBanner
+              message={modelsFetchError || modelsError || ''}
+              onRetry={connected ? () => fetchModels({ forceRefresh: true }) : undefined}
+              retrying={modelsLoading}
+            />
+          ) : null}
+
+          {modelsLoading && models.length === 0 ? (
+            <div className={styles.modelsSkeleton} aria-busy="true">
+              <Skeleton height={36} />
+              <Skeleton height={36} />
+              <Skeleton height={36} />
+            </div>
+          ) : models.length === 0 ? (
+            modelsFetchError || modelsError ? null : (
+              <div className={styles.modelsEmpty}>
+                <strong>{modelsEmptyTitle}</strong>
+                <span>{modelsEmptyDesc}</span>
+              </div>
+            )
+          ) : (
+            <>
+              <SearchField
+                value={modelSearch}
+                onChange={setModelSearch}
+                placeholder={t('system_info.models_search_placeholder')}
+                ariaLabel={t('system_info.models_search_label')}
+              />
+              {filteredGroups.length === 0 ? (
+                <div className={styles.modelsEmpty}>
+                  <strong>{t('system_info.models_no_matches')}</strong>
+                </div>
+              ) : (
+                <div className={styles.groups} key={groupsResetKey}>
+                  {filteredGroups.map((group, index) => {
+                    const iconSrc = getIconForCategory(group.id);
+                    return (
+                      <Collapsible
+                        key={group.id}
+                        flush
+                        defaultOpen={allGroupsOpen ?? (index === 0 || Boolean(modelSearch.trim()))}
+                        label={
+                          <span className={styles.groupTitle}>
+                            {iconSrc ? (
+                              <img src={iconSrc} alt="" className={styles.groupIcon} />
+                            ) : null}
+                            {group.label}
+                          </span>
+                        }
+                        badge={group.items.length}
+                      >
+                        <div className={styles.modelTags}>
+                          {group.items.map((model) => (
+                            <button
+                              key={`${model.name}-${model.alias ?? 'default'}`}
+                              type="button"
+                              className={styles.modelTag}
+                              title={t('system_info.model_copy_hint', { name: model.name })}
+                              onClick={() => void handleCopyModel(model.name)}
+                            >
+                              <span className={styles.modelName}>{model.name}</span>
+                              {model.alias ? (
+                                <span className={styles.modelAlias}>{model.alias}</span>
+                              ) : null}
+                            </button>
+                          ))}
+                        </div>
+                      </Collapsible>
+                    );
+                  })}
+                </div>
+              )}
+            </>
+          )}
+        </Card>
+      </div>
     </div>
   );
 }

@@ -157,7 +157,6 @@ describe('resolveDirtyTabs', () => {
 
 describe('buildHeaderMeta', () => {
   const base = {
-    fieldCount: 58,
     status: resolveStatus(statusInput()),
     dirtyCount: 0,
     sourceDirty: false,
@@ -174,36 +173,35 @@ describe('buildHeaderMeta', () => {
         })
       );
       const meta = buildHeaderMeta({ ...base, status, dirtyCount: 3 });
-      expect(meta.map((segment) => segment.key)).toEqual(['fields', key]);
+      expect(meta.map((segment) => segment.key)).toEqual([key]);
     }
   });
 
   test('clean state ends with a synced segment', () => {
     const meta = buildHeaderMeta(base);
-    expect(meta.map((segment) => segment.key)).toEqual(['fields', 'synced']);
-    expect(meta[0].count).toBe(58);
+    expect(meta.map((segment) => segment.key)).toEqual(['synced']);
   });
 
-  test('dirty and errors stack after the field count', () => {
+  test('dirty and errors stack in order', () => {
     const status = resolveStatus(statusInput({ validationBlocked: true, dirty: true }));
     const meta = buildHeaderMeta({ ...base, status, dirtyCount: 3, errorCount: 2 });
-    expect(meta.map((segment) => segment.key)).toEqual(['fields', 'dirty', 'errors']);
-    expect(meta[1].count).toBe(3);
-    expect(meta[1].tone).toBe('warning');
-    expect(meta[2].count).toBe(2);
-    expect(meta[2].tone).toBe('error');
+    expect(meta.map((segment) => segment.key)).toEqual(['dirty', 'errors']);
+    expect(meta[0].count).toBe(3);
+    expect(meta[0].tone).toBe('warning');
+    expect(meta[1].count).toBe(2);
+    expect(meta[1].tone).toBe('error');
   });
 
   test('source dirty supersedes the visual dirty count', () => {
     const status = resolveStatus(statusInput({ dirty: true }));
     const meta = buildHeaderMeta({ ...base, status, dirtyCount: 3, sourceDirty: true });
-    expect(meta.map((segment) => segment.key)).toEqual(['fields', 'dirty_source']);
+    expect(meta.map((segment) => segment.key)).toEqual(['dirty_source']);
   });
 
   test('yaml error shows without a synced tail', () => {
     const status = resolveStatus(statusInput({ yamlError: true }));
     const meta = buildHeaderMeta({ ...base, status });
-    expect(meta.map((segment) => segment.key)).toEqual(['fields', 'yaml_error']);
+    expect(meta.map((segment) => segment.key)).toEqual(['yaml_error']);
   });
 });
 

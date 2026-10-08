@@ -40,6 +40,10 @@
     min-height: 112px;
   }
 
+  :global(.input-wrap:has(.input-right) > .input) {
+    padding-right: 72px;
+  }
+
   :global(.hint) {
     color: var(--text-secondary);
     font-size: 12px;
@@ -83,20 +87,60 @@
 .toggleRow {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 14px;
+  gap: 12px;
   align-items: center;
-  min-height: 74px;
-  padding: 14px;
+  min-height: 52px;
+  padding: 10px 12px;
   border: 1px solid var(--border-color);
+  border-left-width: 3px;
   border-radius: 10px;
   background: transparent;
   transition:
     border-color var(--dur-hover, 200ms) var(--ease-out-strong, ease-out),
     background-color var(--dur-hover, 200ms) var(--ease-out-strong, ease-out);
 
-  @include mobile {
-    grid-template-columns: minmax(0, 1fr);
+  /* 键盘聚焦开关时整行描边（finding 20） */
+  &:has(:focus-visible) {
+    outline: 2px solid var(--primary-color);
+    outline-offset: 1px;
   }
+}
+
+/* 危险开关：琥珀左规线 + 后果行（finding 3） */
+.toggleRowDanger {
+  border-left-color: var(--amber-color);
+}
+
+.toggleRowDisabled .toggleCopy {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.toggleControl {
+  display: inline-flex;
+  align-items: center;
+  justify-self: end;
+}
+
+.toggleConsequence {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 5px;
+  color: var(--amber-text);
+  font-size: 12px;
+  line-height: 1.5;
+
+  > svg {
+    flex-shrink: 0;
+    margin-top: 3px;
+  }
+}
+
+.toggleRequires {
+  color: var(--text-tertiary);
+  font-size: 12px;
+  font-style: italic;
+  line-height: 1.5;
 }
 
 @media (hover: hover) and (pointer: fine) {
@@ -109,8 +153,9 @@
 .toggleCopy {
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: 3px;
   min-width: 0;
+  cursor: pointer;
 }
 
 .toggleTitle {
@@ -154,7 +199,86 @@
 .fieldAnchor {
   display: block;
   min-width: 0;
-  scroll-margin-top: calc(var(--header-height, 64px) + 16px);
+  /* 顶部粘性工具栏（搜索 + tabs）约 100px，跳转时留出空间 */
+  scroll-margin-top: calc(var(--header-height, 64px) + 116px);
+}
+
+/* 脏字段：琥珀左规线（finding 7）；校验错误：失败色规线 */
+.fieldAnchorDirty,
+.fieldAnchorInvalid {
+  padding-left: 10px;
+  border-left: 3px solid var(--amber-color);
+  border-radius: 2px;
+}
+
+.fieldAnchorInvalid {
+  border-left-color: var(--viz-failure);
+}
+
+/* 字段上方的元信息行：重启 pill / 已更改 · 重置 */
+.fieldMeta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  margin-bottom: 6px;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.restartPill {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px;
+  border: 1px solid var(--amber-30);
+  border-radius: $radius-full;
+  background: var(--amber-10);
+  color: var(--amber-text);
+  font-weight: 650;
+  letter-spacing: 0.02em;
+}
+
+.dirtyMeta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  color: var(--amber-text);
+  font-family: $font-mono;
+  font-weight: 650;
+}
+
+.dirtyLabel::before {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 5px;
+  border-radius: $radius-full;
+  background: var(--amber-color);
+  vertical-align: 1px;
+}
+
+.resetButton {
+  @include button-reset;
+  padding: 1px 6px;
+  border-radius: 6px;
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+
+  &:hover {
+    color: var(--text-primary);
+    background: color-mix(in srgb, var(--text-primary) 6%, transparent);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--primary-color);
+    outline-offset: 1px;
+  }
 }
 
 /* 跨两列的字段（如长文本的代理 URL）；移动端单列布局下回退为一列。 */
@@ -166,25 +290,10 @@
   }
 }
 
-/* 字段标签下方的赞助跳转小字行（代理 URL 字段）。 */
+/* 代理 URL 提示里的赞助跳转行（finding 23：跟随 hint，不再占标签区高度）。 */
 .fieldSponsorHint {
-  margin: -2px 0 0;
-  color: var(--text-secondary);
-  font-size: 12px;
-  line-height: 1.5;
-}
-
-/* 与赞助行同字号同高度的隐形占位：同排右侧字段用它补齐标签区高度，让输入框与代理 URL 对齐。
-   移动端单列堆叠时无需对齐，直接隐藏。 */
-.fieldSponsorSpacer {
-  margin: -2px 0 0;
-  font-size: 12px;
-  line-height: 1.5;
-  visibility: hidden;
-
-  @include mobile {
-    display: none;
-  }
+  display: block;
+  margin: 2px 0 0;
 }
 
 /* 与正文融为一体的高亮链接：同字号，复用全站金色（amber）badge 配方，hover 底色加深。 */
@@ -290,6 +399,73 @@
   line-height: 1.55;
 }
 
+/* 提示里单独一行的 YAML 键名 */
+.yamlKey {
+  display: block;
+  margin-top: 2px;
+  color: var(--text-tertiary);
+  font-family: $font-mono;
+  font-size: 11px;
+  letter-spacing: 0.01em;
+}
+
+/* Select 当前选项说明：与 hint 同字号，前置短横杠区分 */
+.optionDescription {
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.55;
+
+  &::before {
+    content: '— ';
+    color: var(--text-tertiary);
+  }
+}
+
+/* 密码输入右侧的显示/隐藏按钮 */
+.revealButton {
+  @include button-reset;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  color: var(--text-tertiary);
+
+  &:hover {
+    color: var(--text-primary);
+    background: color-mix(in srgb, var(--text-primary) 6%, transparent);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--primary-color);
+    outline-offset: 1px;
+  }
+}
+
+/* Input.rightElement 的静态单位后缀 */
+.suffix {
+  color: var(--text-tertiary);
+  font-family: $font-mono;
+  font-size: 12px;
+  font-weight: 600;
+  pointer-events: none;
+}
+
+.suffixPill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 0 7px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 700;
+  pointer-events: none;
+}
+
 .inlinePill {
   position: absolute;
   right: 8px;
@@ -310,16 +486,18 @@
 /* ---------- 响应式 ---------- */
 
 @include mobile {
-  .group,
-  .toggleRow {
+  .group {
     padding: 14px;
   }
 }
 
 @media (max-width: 380px) {
-  .group,
-  .toggleRow {
+  .group {
     padding: 12px;
+  }
+
+  .toggleRow {
+    padding: 8px 10px;
   }
 }
 

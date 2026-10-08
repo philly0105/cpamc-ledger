@@ -98,6 +98,8 @@ export interface ProviderResource {
   models: string[];
   /** 排序用优先级,未配置时为 0 */
   priority: number;
+  /** 调度权重;OpenAI(按密钥)与 sponsor 聚合资源为 null */
+  weight: number | null;
   headerCount: number;
   excludedModelCount: number;
   /** 仅 OpenAI 有意义,其它 brand 该字段不展示但保留 */

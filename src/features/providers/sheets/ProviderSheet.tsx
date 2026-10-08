@@ -4,6 +4,7 @@ import { Sheet } from '@/components/ui/Sheet';
 import { IconLoader2, IconPencil } from '@/components/ui/icons';
 import type { ProviderRecentUsageMap } from '@/components/providers/utils';
 import { useNotificationStore } from '@/stores';
+import { maskApiKey } from '@/utils/format';
 import { PROVIDER_DESCRIPTORS } from '../descriptors';
 import { isMultiProtocolSponsorBrand } from '../sponsorDefinitions';
 import type { ProviderBrand, ProviderEntryFormInput, ProviderResource } from '../types';
@@ -31,12 +32,20 @@ interface ProviderSheetProps {
   onClose: () => void;
   onSwitchToEdit: () => void;
   workbench: UseProviderWorkbenchResult;
-  onCreated: () => void;
-  onUpdated: () => void;
+  /** 回传条目显示名,供 toast 使用 */
+  onCreated: (name: string) => void;
+  onUpdated: (name: string) => void;
   mutationDisabled?: boolean;
   usageByProvider?: ProviderRecentUsageMap;
   ref?: Ref<ProviderSheetHandle>;
 }
+
+const inputDisplayName = (input: ProviderEntryFormInput, fallback: string): string => {
+  const name = input.name?.trim();
+  if (name) return name;
+  const key = input.apiKey?.trim() || input.apiKeyEntries?.[0]?.apiKey?.trim();
+  return key ? maskApiKey(key) : fallback;
+};
 
 export function ProviderSheet({
   state,
@@ -67,9 +76,11 @@ export function ProviderSheet({
   }, []);
 
   const descriptor = PROVIDER_DESCRIPTORS[state.brand];
+  const providerName = t(`providersPage.providerNames.${state.brand}`);
   const isEditingForm = state.mode === 'create' || state.mode === 'edit';
   const formMutating = submitting || mutationDisabled;
-  const submitDisabled = formMutating || (state.mode === 'edit' && !isDirty);
+  const noChanges = state.mode === 'edit' && !isDirty;
+  const submitDisabled = formMutating || noChanges;
 
   const confirmDiscardIfDirty = useCallback((): Promise<boolean> => {
     if (!isEditingForm || !isDirty || submitting) {
@@ -96,29 +107,18 @@ export function ProviderSheet({
     });
   }, [confirmDiscardIfDirty, onClose]);
 
-  const titleText =
-    state.mode === 'create'
-      ? `${t('providersPage.form.createEyebrow')} · ${t(
-          `providersPage.providerNames.${state.brand}`
-        )}`
-      : state.mode === 'edit'
-        ? `${t('providersPage.form.editEyebrow')} · ${t(
-            `providersPage.providerNames.${state.brand}`
-          )}`
-        : `${t('providersPage.detail.title')} · ${t(`providersPage.providerNames.${state.brand}`)}`;
-
   const handleCreate = useCallback(
     async (input: ProviderEntryFormInput) => {
       if (mutationDisabled) return;
       setSubmitting(true);
       try {
         await workbench.createProvider(state.brand, input);
-        onCreated();
+        onCreated(inputDisplayName(input, providerName));
       } finally {
         setSubmitting(false);
       }
     },
-    [mutationDisabled, onCreated, state.brand, workbench]
+    [mutationDisabled, onCreated, providerName, state.brand, workbench]
   );
 
   const handleUpdate = useCallback(
@@ -127,7 +127,7 @@ export function ProviderSheet({
       setSubmitting(true);
       try {
         await workbench.updateProvider(state.resource, input);
-        onUpdated();
+        onUpdated(state.resource.name ?? state.resource.apiKeyPreview ?? state.resource.identifier);
       } finally {
         setSubmitting(false);
       }
@@ -173,15 +173,15 @@ export function ProviderSheet({
 
   const footer =
     state.mode === 'detail' ? (
-      state.resource ? (
-        <>
-          <button
-            type="button"
-            className={`${styles.footerBtn} ${styles.footerBtnGhost}`}
-            onClick={onClose}
-          >
-            {t('providersPage.actions.cancel')}
-          </button>
+      <>
+        <button
+          type="button"
+          className={`${styles.footerBtn} ${styles.footerBtnGhost}`}
+          onClick={onClose}
+        >
+          {t('common.close')}
+        </button>
+        {state.resource ? (
           <button
             type="button"
             className={`${styles.footerBtn} ${styles.footerBtnPrimary}`}
@@ -191,16 +191,8 @@ export function ProviderSheet({
             <IconPencil size={14} />
             {t('providersPage.actions.edit')}
           </button>
-        </>
-      ) : (
-        <button
-          type="button"
-          className={`${styles.footerBtn} ${styles.footerBtnPrimary}`}
-          onClick={onClose}
-        >
-          {t('providersPage.actions.cancel')}
-        </button>
-      )
+        ) : null}
+      </>
     ) : (
       <>
         <button
@@ -216,6 +208,7 @@ export function ProviderSheet({
           form={formId}
           className={`${styles.footerBtn} ${styles.footerBtnPrimary}`}
           disabled={submitDisabled}
+          title={noChanges ? t('providersPage.form.noChanges') : undefined}
         >
           {submitting ? <IconLoader2 size={14} /> : null}
           {state.mode === 'create'
@@ -237,21 +230,12 @@ export function ProviderSheet({
             ? t('providersPage.form.createEyebrow')
             : t('providersPage.form.editEyebrow')
       }
-      title={titleText}
-      description={t('providersPage.table.description', {
-        route:
-          state.brand === 'openaiCompatibility'
-            ? '/ai-providers/openai'
-            : state.brand === 'apikeyFun'
-              ? '/quick-start'
-              : state.brand === 'fennoAI'
-                ? '/ai-providers/fennoai'
-                : state.brand === 'qiniuCloud'
-                  ? '/ai-providers/qiniu'
-                  : state.brand === 'kimi'
-                    ? '/ai-providers/kimi'
-                    : `/ai-providers/${state.brand}`,
-      })}
+      title={
+        state.mode === 'detail' && state.resource
+          ? (state.resource.name ?? state.resource.apiKeyPreview ?? state.resource.identifier)
+          : providerName
+      }
+      description={t('providersPage.sheet.description', { provider: providerName })}
       footer={footer}
       closeDisabled={submitting}
       confirmClose={confirmDiscardIfDirty}

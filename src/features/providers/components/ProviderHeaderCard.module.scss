@@ -121,37 +121,6 @@
   }
 }
 
-.chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 5px 12px;
-  border-radius: var(--radius-md);
-  border: 1px solid var(--border-color);
-  background: var(--muted-bg);
-  color: var(--muted-foreground);
-  font-size: 13px;
-  font-weight: 500;
-}
-
-.chipPrimary {
-  border-color: var(--primary-30);
-  background: var(--primary-10);
-  color: var(--primary-color);
-}
-
-.chipAmber {
-  border-color: var(--amber-30);
-  background: var(--amber-10);
-  color: var(--amber-text);
-}
-
 .spin {
   display: inline-flex;
   animation: pwc-spin 0.9s linear infinite;

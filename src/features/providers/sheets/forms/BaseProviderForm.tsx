@@ -37,11 +37,15 @@ import { ApiKeyEntriesEditor } from './ApiKeyEntriesEditor';
 import { ModelEntriesEditor } from './ModelEntriesEditor';
 import styles from './sharedForm.module.scss';
 import { MAX_CREDENTIAL_WEIGHT } from '@/utils/credentialWeight';
-import { readRuntimePolicy, validateRuntimePolicy } from '../../runtimePolicy';
+import {
+  countPolicyOverrides,
+  readRuntimePolicy,
+  validateRuntimePolicy,
+} from '../../runtimePolicy';
 import { readModelOptions, validateModelOptions } from '../../modelOptions';
 import { RuntimePolicyEditor } from './RuntimePolicyEditor';
 import { ProviderBehaviorEditor } from './ProviderBehaviorEditor';
-import { pickProviderBehavior } from '../../providerBehavior';
+import { countConfiguredBehavior, pickProviderBehavior } from '../../providerBehavior';
 
 /** 模块级常量，免得每次渲染都给 picker 一个新数组引用。 */
 const DISABLE_ALL_RULES = [DISABLE_ALL_RULE];
@@ -75,6 +79,9 @@ const formatJsonObject = (value?: Record<string, unknown>): string => {
 };
 
 const isClaudeLikeBrand = (brand: ProviderBrand): boolean => brand === 'claude';
+
+/** 可被校验定位并聚焦的字段；id 固定为 `${fid}-${field}`。 */
+type FieldKey = 'name' | 'apiKey' | 'baseUrl' | 'weight';
 
 function buildInitialForm(
   brand: ProviderBrand,
@@ -239,6 +246,7 @@ export function BaseProviderForm({
     JSON.stringify(buildInitialForm(brand, resource, mode))
   );
   const [error, setError] = useState<string | null>(null);
+  const [invalidField, setInvalidField] = useState<FieldKey | null>(null);
   const [showSingleApiKey, setShowSingleApiKey] = useState(false);
 
   const isDirty = useMemo(
@@ -376,24 +384,24 @@ export function BaseProviderForm({
     }));
   };
 
-  const validate = (): string | null => {
+  const validate = (): { field?: FieldKey; message: string } | null => {
     const modelError = validateModelOptions(form.models);
-    if (modelError) return t(modelError);
+    if (modelError) return { message: t(modelError) };
     if (form.runtimePolicy) {
       const policyError = validateRuntimePolicy(
         form.runtimePolicy,
         descriptor.supportsRequestScopedErrors
       );
-      if (policyError) return t(policyError);
+      if (policyError) return { message: t(policyError) };
     }
     if (descriptor.supportsName && !form.name.trim()) {
-      return t('providersPage.form.validation.nameRequired');
+      return { field: 'name', message: t('providersPage.form.validation.nameRequired') };
     }
     if (descriptor.supportsApiKey && mode === 'create' && !form.apiKey.trim()) {
-      return t('providersPage.form.validation.apiKeyRequired');
+      return { field: 'apiKey', message: t('providersPage.form.validation.apiKeyRequired') };
     }
     if (descriptor.baseUrlRequired && !form.baseUrl.trim()) {
-      return t('providersPage.form.validation.baseUrlRequired');
+      return { field: 'baseUrl', message: t('providersPage.form.validation.baseUrlRequired') };
     }
     const weights = [
       ...(brand === 'openaiCompatibility'
@@ -401,29 +409,59 @@ export function BaseProviderForm({
         : []),
       ...(brand !== 'openaiCompatibility' ? [form.weight] : []),
     ];
+    const weightField: FieldKey | undefined =
+      brand === 'openaiCompatibility' ? undefined : 'weight';
     if (weights.some((weight) => weight !== undefined && !Number.isSafeInteger(weight))) {
-      return t('providersPage.form.validation.weightInteger');
+      return { field: weightField, message: t('providersPage.form.validation.weightInteger') };
     }
     if (weights.some((weight) => weight !== undefined && weight > MAX_CREDENTIAL_WEIGHT)) {
-      return t('providersPage.form.validation.weightMax', { max: MAX_CREDENTIAL_WEIGHT });
+      return {
+        field: weightField,
+        message: t('providersPage.form.validation.weightMax', { max: MAX_CREDENTIAL_WEIGHT }),
+      };
     }
     return null;
   };
+
+  const errorId = `${fid}-error`;
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const v = validate();
     if (v) {
-      setError(v);
+      setError(v.message);
+      setInvalidField(v.field ?? null);
+      // 先聚焦第一个无效字段；没有具体字段时把焦点交给顶部错误框。
+      requestAnimationFrame(() => {
+        const target = document.getElementById(v.field ? `${fid}-${v.field}` : errorId);
+        target?.scrollIntoView({ block: 'center' });
+        target?.focus();
+      });
       return;
     }
     try {
       setError(null);
+      setInvalidField(null);
       await onSubmit(form);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
+      setInvalidField(null);
     }
   };
+
+  const invalidProps = (field: FieldKey, base: string) =>
+    invalidField === field
+      ? {
+          className: `${base} ${styles.inputInvalid}`,
+          'aria-invalid': true as const,
+          'aria-describedby': errorId,
+        }
+      : { className: base };
+  const requiredMark = (
+    <span className={styles.required} aria-hidden="true">
+      *
+    </span>
+  );
 
   /* ------------------ entries helpers ------------------ */
 
@@ -498,21 +536,61 @@ export function BaseProviderForm({
     );
   };
 
+  /* ------------------ 折叠头计数 ------------------ */
+
+  const configuredKeys = apiKeyEntries.filter(
+    (e) => e.apiKey.trim() || e.existingApiKey?.trim()
+  ).length;
+  const configuredHeaders = headersList.filter((h) => h.key.trim()).length;
+  const cloakConfigured = form.cloak
+    ? [
+        form.cloak.mode.trim() !== '',
+        form.cloak.strictMode,
+        form.cloak.cacheUserId,
+        form.cloak.sensitiveWordsText.trim() !== '',
+      ].filter(Boolean).length
+    : 0;
+  const advancedConfigured =
+    (descriptor.supportsProxyUrl && form.proxyUrl.trim() ? 1 : 0) +
+    configuredHeaders +
+    excludedRules.length +
+    countConfiguredBehavior(form) +
+    countPolicyOverrides(form.runtimePolicy ?? readRuntimePolicy()) +
+    ((form.fingerprintProfile ?? '') !== '' ? 1 : 0) +
+    cloakConfigured;
+  const countHint = (count: number) => t('providersPage.form.configuredCount', { count });
+
+  const showRouting =
+    descriptor.supportsPriority ||
+    descriptor.supportsPrefix ||
+    descriptor.supportsDisabled ||
+    brand !== 'openaiCompatibility';
+
   return (
     <form id={formId} className={styles.form} onSubmit={handleSubmit} noValidate>
-      {/* 基础字段 */}
-      <div className={styles.section}>
+      {error ? (
+        <div id={errorId} className={styles.errorBox} role="alert" tabIndex={-1}>
+          {error}
+        </div>
+      ) : null}
+
+      {/* 连接 */}
+      <div className={styles.formSection}>
+        <h3 className={styles.formSectionHeading}>{t('providersPage.form.sections.connection')}</h3>
+
         {descriptor.supportsName ? (
           <div className={styles.field}>
             <label className={styles.label} htmlFor={`${fid}-name`}>
               {t('providersPage.form.name')}
+              {requiredMark}
             </label>
             <input
               id={`${fid}-name`}
-              className={styles.input}
+              {...invalidProps('name', styles.input)}
               value={form.name}
               onChange={(e) => updateField('name', e.target.value)}
               disabled={mutating}
+              required
             />
           </div>
         ) : null}
@@ -521,11 +599,12 @@ export function BaseProviderForm({
           <div className={styles.field}>
             <label className={styles.label} htmlFor={`${fid}-apiKey`}>
               {t('providersPage.form.apiKey')}
+              {mode === 'create' ? requiredMark : null}
             </label>
             <div className={styles.passwordField}>
               <input
                 id={`${fid}-apiKey`}
-                className={styles.passwordInput}
+                {...invalidProps('apiKey', styles.passwordInput)}
                 type={showSingleApiKey ? 'text' : 'password'}
                 value={form.apiKey}
                 onChange={(e) => updateField('apiKey', e.target.value)}
@@ -539,6 +618,7 @@ export function BaseProviderForm({
                     : t('providersPage.form.apiKeyCreatePlaceholder')
                 }
                 disabled={mutating}
+                required={mode === 'create'}
               />
               <button
                 type="button"
@@ -566,97 +646,53 @@ export function BaseProviderForm({
           <div className={styles.field}>
             <label className={styles.label} htmlFor={`${fid}-baseUrl`}>
               {t('providersPage.form.baseUrl')}
-              {descriptor.baseUrlRequired ? (
-                <span className={styles.labelHint}>
-                  {' '}
-                  · {t('providersPage.form.baseUrlRequiredHint')}
-                </span>
-              ) : null}
+              {descriptor.baseUrlRequired ? requiredMark : null}
             </label>
             <input
               id={`${fid}-baseUrl`}
-              className={styles.input}
+              {...invalidProps('baseUrl', styles.input)}
               value={form.baseUrl}
               onChange={(e) => updateField('baseUrl', e.target.value)}
               placeholder="https://api.example.com"
               disabled={mutating}
+              required={descriptor.baseUrlRequired}
             />
           </div>
         ) : null}
 
-        {descriptor.supportsProxyUrl ? (
-          <div className={styles.field}>
-            <label className={styles.label} htmlFor={`${fid}-proxy`}>
-              {t('providersPage.form.proxyUrl')}
-            </label>
-            <input
-              id={`${fid}-proxy`}
-              className={styles.input}
-              value={form.proxyUrl}
-              onChange={(e) => updateField('proxyUrl', e.target.value)}
-              placeholder="http://127.0.0.1:7890"
-              disabled={mutating}
-            />
-          </div>
-        ) : null}
-
-        {descriptor.supportsPrefix ? (
-          <div className={styles.fieldRow}>
-            <div className={styles.field}>
-              <label className={styles.label} htmlFor={`${fid}-prefix`}>
-                {t('providersPage.form.prefix')}
-              </label>
-              <input
-                id={`${fid}-prefix`}
-                className={styles.input}
-                value={form.prefix}
-                onChange={(e) => updateField('prefix', e.target.value)}
-                disabled={mutating}
-              />
-            </div>
-            {descriptor.supportsPriority ? (
-              <div className={styles.field}>
-                <label className={styles.label} htmlFor={`${fid}-prio`}>
-                  {t('providersPage.form.priority')}
-                </label>
-                <input
-                  id={`${fid}-prio`}
-                  type="number"
-                  className={styles.input}
-                  value={form.priority ?? ''}
-                  onChange={(e) =>
-                    updateField(
-                      'priority',
-                      e.target.value === '' ? undefined : Number(e.target.value)
-                    )
-                  }
-                  disabled={mutating}
-                />
-              </div>
-            ) : null}
-          </div>
-        ) : null}
-
-        {brand !== 'openaiCompatibility' ? (
-          <div className={styles.field}>
-            <label className={styles.label} htmlFor={`${fid}-weight`}>
-              {t('providersPage.form.weight')}
-            </label>
-            <input
-              id={`${fid}-weight`}
-              type="number"
-              step="1"
-              max={MAX_CREDENTIAL_WEIGHT}
-              className={styles.input}
-              value={form.weight ?? ''}
-              placeholder="1"
-              onChange={(e) =>
-                updateField('weight', e.target.value === '' ? undefined : Number(e.target.value))
+        {descriptor.supportsApiKeyEntries && form.apiKeyEntries ? (
+          <Collapsible
+            label={t('providersPage.form.apiKeyEntriesSection')}
+            hint={countHint(configuredKeys)}
+            defaultOpen
+          >
+            <ApiKeyEntriesEditor
+              entries={apiKeyEntries}
+              removeDisabled={actualApiKeyEntries.length === 0}
+              mutating={mutating}
+              statuses={connectivity.openaiStatuses}
+              isTestingAny={connectivity.isTestingAny}
+              onUpdate={(idx, patch) =>
+                updateField(
+                  'apiKeyEntries',
+                  apiKeyEntries.map((it, i) => (i === idx ? { ...it, ...patch } : it))
+                )
               }
-              disabled={mutating}
+              onAdd={() => {
+                const next = [...actualApiKeyEntries, emptyApiKeyEntry()];
+                updateField('apiKeyEntries', next);
+                return next.length - 1;
+              }}
+              onRemove={(idx) =>
+                updateField(
+                  'apiKeyEntries',
+                  actualApiKeyEntries.filter((_, i) => i !== idx)
+                )
+              }
+              onTest={(idx) => void connectivity.runOpenAIKey(idx)}
+              onTestAll={() => void connectivity.runOpenAIAllKeys()}
             />
-            <span className={styles.labelHint}>{t('providersPage.form.weightHint')}</span>
-          </div>
+          </Collapsible>
         ) : null}
 
         {descriptor.supportsTestModel ? (
@@ -684,12 +720,13 @@ export function BaseProviderForm({
               ariaLabel={t('providersPage.form.testModel')}
             />
             {singleConnectivity ? (
-              <div className={styles.connectivityRow}>
+              <div className={styles.connectivityRow} aria-live="polite">
                 <button
                   type="button"
                   className={styles.connectivityBtn}
                   disabled={mutating || connectivity.isTestingAny}
                   onClick={() => void singleConnectivity.run()}
+                  title={t('providersPage.connectivity.testHint')}
                 >
                   {singleConnectivity.status.state === 'loading' ? (
                     <span className={`${styles.statusIcon} ${styles.statusIconLoading}`}>
@@ -701,13 +738,21 @@ export function BaseProviderForm({
                 <ConnectivityStatusIcon state={singleConnectivity.status.state} />
                 {singleConnectivity.status.state === 'success' ? (
                   <span className={styles.connectivityHintSuccess}>
-                    {t('providersPage.connectivity.success')}
+                    {singleConnectivity.status.latencyMs != null
+                      ? t('providersPage.connectivity.ok', {
+                          ms: singleConnectivity.status.latencyMs,
+                        })
+                      : t('providersPage.connectivity.success')}
+                    {singleConnectivity.status.model ? ` · ${singleConnectivity.status.model}` : ''}
                   </span>
                 ) : null}
               </div>
             ) : null}
             {singleConnectivity?.status.state === 'error' ? (
               <div className={styles.connectivityError}>{singleConnectivity.status.message}</div>
+            ) : null}
+            {singleConnectivity ? (
+              <small className={styles.labelHint}>{t('providersPage.connectivity.testHint')}</small>
             ) : null}
           </div>
         ) : null}
@@ -726,141 +771,112 @@ export function BaseProviderForm({
             </span>
           </label>
         ) : null}
-
-        {descriptor.supportsDisabled ? (
-          <label className={styles.checkboxRow}>
-            <input
-              type="checkbox"
-              className={styles.checkboxBox}
-              checked={form.disabled}
-              disabled={mutating}
-              onChange={(e) => updateField('disabled', e.target.checked)}
-            />
-            <span className={styles.checkboxText}>
-              <span>{t('providersPage.form.disabled')}</span>
-              <small>{t('providersPage.form.disabledHint')}</small>
-            </span>
-          </label>
-        ) : null}
       </div>
 
-      <ProviderBehaviorEditor
-        brand={brand}
-        value={form}
-        onChange={(patch) => setForm((current) => ({ ...current, ...patch }))}
-        disabled={mutating}
-      />
-      <RuntimePolicyEditor
-        value={form.runtimePolicy ?? readRuntimePolicy()}
-        onChange={(value) => updateField('runtimePolicy', value)}
-        disabled={mutating}
-        supportsErrors={descriptor.supportsRequestScopedErrors}
-      />
+      {/* 路由 */}
+      {showRouting ? (
+        <div className={styles.formSection}>
+          <h3 className={styles.formSectionHeading}>{t('providersPage.form.sections.routing')}</h3>
 
-      {/* 高级折叠区 */}
-      {descriptor.supportsApiKeyEntries && form.apiKeyEntries ? (
-        <Collapsible
-          label={t('providersPage.form.apiKeyEntriesSection')}
-          hint={`${
-            apiKeyEntries.filter((e) => e.apiKey.trim() || e.existingApiKey?.trim()).length
-          }`}
-          defaultOpen
-        >
-          <ApiKeyEntriesEditor
-            entries={apiKeyEntries}
-            removeDisabled={actualApiKeyEntries.length === 0}
-            mutating={mutating}
-            statuses={connectivity.openaiStatuses}
-            isTestingAny={connectivity.isTestingAny}
-            onUpdate={(idx, patch) =>
-              updateField(
-                'apiKeyEntries',
-                apiKeyEntries.map((it, i) => (i === idx ? { ...it, ...patch } : it))
-              )
-            }
-            onAdd={() => {
-              const next = [...actualApiKeyEntries, emptyApiKeyEntry()];
-              updateField('apiKeyEntries', next);
-              return next.length - 1;
-            }}
-            onRemove={(idx) =>
-              updateField(
-                'apiKeyEntries',
-                actualApiKeyEntries.filter((_, i) => i !== idx)
-              )
-            }
-            onTest={(idx) => void connectivity.runOpenAIKey(idx)}
-            onTestAll={() => void connectivity.runOpenAIAllKeys()}
-          />
-        </Collapsible>
-      ) : null}
-
-      {descriptor.supportsHeaders ? (
-        <Collapsible label={t('providersPage.form.headersSection')}>
-          <div className={styles.entriesList}>
-            {headersList.map((entry, idx) => (
-              <div
-                key={idx}
-                style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 8 }}
-              >
-                <input
-                  className={styles.input}
-                  placeholder="X-Custom-Header"
-                  value={entry.key}
-                  onChange={(e) =>
-                    updateField(
-                      'headers',
-                      headersList.map((it, i) => (i === idx ? { ...it, key: e.target.value } : it))
-                    )
-                  }
-                  disabled={mutating}
-                />
-                <input
-                  className={styles.input}
-                  placeholder="value"
-                  value={entry.value}
-                  onChange={(e) =>
-                    updateField(
-                      'headers',
-                      headersList.map((it, i) =>
-                        i === idx ? { ...it, value: e.target.value } : it
+          {descriptor.supportsPriority || brand !== 'openaiCompatibility' ? (
+            <div className={styles.fieldRow}>
+              {descriptor.supportsPriority ? (
+                <div className={styles.field}>
+                  <label className={styles.label} htmlFor={`${fid}-priority`}>
+                    {t('providersPage.form.priority')}
+                  </label>
+                  <input
+                    id={`${fid}-priority`}
+                    type="number"
+                    className={styles.input}
+                    value={form.priority ?? ''}
+                    onChange={(e) =>
+                      updateField(
+                        'priority',
+                        e.target.value === '' ? undefined : Number(e.target.value)
                       )
-                    )
-                  }
-                  disabled={mutating}
-                />
-                <button
-                  type="button"
-                  className={styles.removeBtn}
-                  disabled={mutating || headersList.length <= 1}
-                  onClick={() =>
-                    updateField(
-                      'headers',
-                      headersList.filter((_, i) => i !== idx)
-                    )
-                  }
-                >
-                  <IconX size={12} />
-                </button>
-              </div>
-            ))}
-            <button
-              type="button"
-              className={styles.addBtn}
-              disabled={mutating}
-              onClick={() => updateField('headers', [...headersList, emptyHeader()])}
-            >
-              <IconPlus size={12} />
-              <span>{t('providersPage.form.addHeader')}</span>
-            </button>
-          </div>
-        </Collapsible>
+                    }
+                    disabled={mutating}
+                    aria-describedby={`${fid}-priority-hint`}
+                  />
+                  <span id={`${fid}-priority-hint`} className={styles.labelHint}>
+                    {t('providersPage.form.priorityHint')}
+                  </span>
+                </div>
+              ) : null}
+              {brand !== 'openaiCompatibility' ? (
+                <div className={styles.field}>
+                  <label className={styles.label} htmlFor={`${fid}-weight`}>
+                    {t('providersPage.form.weight')}
+                  </label>
+                  <input
+                    id={`${fid}-weight`}
+                    type="number"
+                    step="1"
+                    max={MAX_CREDENTIAL_WEIGHT}
+                    {...invalidProps('weight', styles.input)}
+                    value={form.weight ?? ''}
+                    placeholder="1"
+                    onChange={(e) =>
+                      updateField(
+                        'weight',
+                        e.target.value === '' ? undefined : Number(e.target.value)
+                      )
+                    }
+                    disabled={mutating}
+                    aria-describedby={invalidField === 'weight' ? errorId : `${fid}-weight-hint`}
+                  />
+                  <span id={`${fid}-weight-hint`} className={styles.labelHint}>
+                    {t('providersPage.form.weightHint')}
+                  </span>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
+          {descriptor.supportsPrefix ? (
+            <div className={styles.field}>
+              <label className={styles.label} htmlFor={`${fid}-prefix`}>
+                {t('providersPage.form.prefix')}
+              </label>
+              <input
+                id={`${fid}-prefix`}
+                className={styles.input}
+                value={form.prefix}
+                onChange={(e) => updateField('prefix', e.target.value)}
+                disabled={mutating}
+                aria-describedby={`${fid}-prefix-hint`}
+              />
+              <span id={`${fid}-prefix-hint`} className={styles.labelHint}>
+                {t('providersPage.form.prefixHint')}
+              </span>
+            </div>
+          ) : null}
+
+          {descriptor.supportsDisabled ? (
+            <label className={styles.checkboxRow}>
+              <input
+                type="checkbox"
+                className={styles.checkboxBox}
+                checked={form.disabled}
+                disabled={mutating}
+                onChange={(e) => updateField('disabled', e.target.checked)}
+              />
+              <span className={styles.checkboxText}>
+                <span>{t('providersPage.form.disabled')}</span>
+                <small>{t('providersPage.form.disabledHint')}</small>
+              </span>
+            </label>
+          ) : null}
+        </div>
       ) : null}
 
+      {/* 模型与别名 */}
       {descriptor.supportsModels ? (
         <Collapsible
-          label={t('providersPage.form.modelsSection')}
-          hint={`${existingModelNames.size}`}
+          label={t('providersPage.form.sections.models')}
+          hint={countHint(existingModelNames.size)}
+          defaultOpen={existingModelNames.size > 0}
         >
           <div className={styles.entriesList}>
             {discovery.available ? (
@@ -906,106 +922,233 @@ export function BaseProviderForm({
         </Collapsible>
       ) : null}
 
-      {descriptor.supportsExcludedModels ? (
-        <Collapsible label={t('providersPage.form.excludedSection')}>
-          <div className={styles.field}>
-            <ExcludedModelsPicker
-              value={excludedRules}
-              onChange={(next) => updateField('excludedModelsText', formatExcludedRulesText(next))}
-              candidates={excludedCandidates}
-              catalogState={excludedCatalogState}
-              onRetryCatalog={discovery.available ? () => void discovery.fetch() : undefined}
-              disabled={mutating}
-              // `'*'` = 该 provider 已停用，唯一所有者是下面的 Disabled 开关。
-              // 传进来后 picker 双向过滤它，用户手打 `*` 也会被拦下并解释原因。
-              reservedRules={DISABLE_ALL_RULES}
-              reservedRuleMessage={t('providersPage.form.excludedDisabledNote')}
-            />
-          </div>
-        </Collapsible>
-      ) : null}
-
-      {isClaudeLikeBrand(brand) ? (
-        <div className={styles.field}>
-          <label id={`${fid}-fingerprint-profile-label`} className={styles.label}>
-            {t('providersPage.form.fingerprintProfile')}
-          </label>
-          <Select
-            id={`${fid}-fingerprint-profile`}
-            value={form.fingerprintProfile ?? ''}
-            options={[
-              {
-                value: '',
-                label: t('providersPage.form.fingerprintProfileDefault'),
-              },
-              {
-                value: 'claude-code-cli',
-                label: t('providersPage.form.fingerprintProfileClaudeCodeCli'),
-              },
-            ]}
-            onChange={(value) => updateField('fingerprintProfile', value)}
-            disabled={mutating}
-            ariaLabelledBy={`${fid}-fingerprint-profile-label`}
-          />
-          <small className={styles.labelHint}>
-            {t('providersPage.form.fingerprintProfileHint')}
-          </small>
-        </div>
-      ) : null}
-
-      {descriptor.supportsCloak && form.cloak ? (
-        <Collapsible label={t('providersPage.form.cloakSection')}>
-          <div className={styles.section}>
+      {/* 高级 */}
+      <Collapsible
+        label={t('providersPage.form.sections.advanced')}
+        hint={countHint(advancedConfigured)}
+      >
+        <div className={styles.section}>
+          {descriptor.supportsProxyUrl ? (
             <div className={styles.field}>
-              <label className={styles.label}>{t('providersPage.form.cloakMode')}</label>
+              <label className={styles.label} htmlFor={`${fid}-proxy`}>
+                {t('providersPage.form.proxyUrl')}
+              </label>
               <input
+                id={`${fid}-proxy`}
                 className={styles.input}
-                value={form.cloak.mode}
-                onChange={(e) => updateCloak('mode', e.target.value)}
-                placeholder="auto / always / never"
+                value={form.proxyUrl}
+                onChange={(e) => updateField('proxyUrl', e.target.value)}
+                placeholder="http://127.0.0.1:7890"
                 disabled={mutating}
               />
             </div>
-            <label className={styles.checkboxRow}>
-              <input
-                type="checkbox"
-                className={styles.checkboxBox}
-                checked={form.cloak.strictMode}
-                disabled={mutating}
-                onChange={(e) => updateCloak('strictMode', e.target.checked)}
-              />
-              <span className={styles.checkboxText}>
-                <span>{t('providersPage.form.cloakStrict')}</span>
-              </span>
-            </label>
-            <label className={styles.checkboxRow}>
-              <input
-                type="checkbox"
-                className={styles.checkboxBox}
-                checked={form.cloak.cacheUserId}
-                disabled={mutating}
-                onChange={(e) => updateCloak('cacheUserId', e.target.checked)}
-              />
-              <span className={styles.checkboxText}>
-                <span>{t('providersPage.form.cloakCacheUserId')}</span>
-                <small>{t('providersPage.form.cloakCacheUserIdHint')}</small>
-              </span>
-            </label>
-            <div className={styles.field}>
-              <label className={styles.label}>{t('providersPage.form.cloakSensitiveWords')}</label>
-              <textarea
-                className={styles.textarea}
-                rows={3}
-                value={form.cloak.sensitiveWordsText}
-                onChange={(e) => updateCloak('sensitiveWordsText', e.target.value)}
-                disabled={mutating}
-              />
-            </div>
-          </div>
-        </Collapsible>
-      ) : null}
+          ) : null}
 
-      {error ? <div className={styles.errorBox}>{error}</div> : null}
+          {descriptor.supportsHeaders ? (
+            <Collapsible
+              label={t('providersPage.form.headersSection')}
+              hint={countHint(configuredHeaders)}
+            >
+              <div className={styles.entriesList}>
+                <div className={styles.columnHeaders} aria-hidden="true">
+                  <span>{t('providersPage.form.headerName')}</span>
+                  <span>{t('providersPage.form.headerValue')}</span>
+                  <span />
+                </div>
+                {headersList.map((entry, idx) => (
+                  <div key={idx} className={styles.headerRow}>
+                    <input
+                      className={styles.input}
+                      placeholder="X-Custom-Header"
+                      aria-label={`${t('providersPage.form.headerName')} ${idx + 1}`}
+                      value={entry.key}
+                      onChange={(e) =>
+                        updateField(
+                          'headers',
+                          headersList.map((it, i) =>
+                            i === idx ? { ...it, key: e.target.value } : it
+                          )
+                        )
+                      }
+                      disabled={mutating}
+                    />
+                    <input
+                      className={styles.input}
+                      placeholder={t('providersPage.form.headerValue')}
+                      aria-label={`${t('providersPage.form.headerValue')} ${idx + 1}`}
+                      value={entry.value}
+                      onChange={(e) =>
+                        updateField(
+                          'headers',
+                          headersList.map((it, i) =>
+                            i === idx ? { ...it, value: e.target.value } : it
+                          )
+                        )
+                      }
+                      disabled={mutating}
+                    />
+                    <button
+                      type="button"
+                      className={styles.removeBtn}
+                      disabled={mutating || headersList.length <= 1}
+                      aria-label={`${t('providersPage.form.removeHeader')} ${idx + 1}`}
+                      title={t('providersPage.form.removeHeader')}
+                      onClick={() =>
+                        updateField(
+                          'headers',
+                          headersList.filter((_, i) => i !== idx)
+                        )
+                      }
+                    >
+                      <IconX size={12} />
+                    </button>
+                  </div>
+                ))}
+                <button
+                  type="button"
+                  className={styles.addBtn}
+                  disabled={mutating}
+                  onClick={() => updateField('headers', [...headersList, emptyHeader()])}
+                >
+                  <IconPlus size={12} />
+                  <span>{t('providersPage.form.addHeader')}</span>
+                </button>
+              </div>
+            </Collapsible>
+          ) : null}
+
+          {descriptor.supportsExcludedModels ? (
+            <Collapsible
+              label={t('providersPage.form.excludedSection')}
+              hint={countHint(excludedRules.length)}
+            >
+              <div className={styles.field}>
+                <ExcludedModelsPicker
+                  value={excludedRules}
+                  onChange={(next) =>
+                    updateField('excludedModelsText', formatExcludedRulesText(next))
+                  }
+                  candidates={excludedCandidates}
+                  catalogState={excludedCatalogState}
+                  onRetryCatalog={discovery.available ? () => void discovery.fetch() : undefined}
+                  disabled={mutating}
+                  // `'*'` = 该 provider 已停用，唯一所有者是上面的 Disabled 开关。
+                  // 传进来后 picker 双向过滤它，用户手打 `*` 也会被拦下并解释原因。
+                  reservedRules={DISABLE_ALL_RULES}
+                  reservedRuleMessage={t('providersPage.form.excludedDisabledNote')}
+                />
+              </div>
+            </Collapsible>
+          ) : null}
+
+          <ProviderBehaviorEditor
+            brand={brand}
+            value={form}
+            onChange={(patch) => setForm((current) => ({ ...current, ...patch }))}
+            disabled={mutating}
+          />
+          <RuntimePolicyEditor
+            value={form.runtimePolicy ?? readRuntimePolicy()}
+            onChange={(value) => updateField('runtimePolicy', value)}
+            disabled={mutating}
+            supportsErrors={descriptor.supportsRequestScopedErrors}
+          />
+
+          {isClaudeLikeBrand(brand) ? (
+            <div className={styles.field}>
+              <label id={`${fid}-fingerprint-profile-label`} className={styles.label}>
+                {t('providersPage.form.fingerprintProfile')}
+              </label>
+              <Select
+                id={`${fid}-fingerprint-profile`}
+                value={form.fingerprintProfile ?? ''}
+                options={[
+                  {
+                    value: '',
+                    label: t('providersPage.form.fingerprintProfileDefault'),
+                  },
+                  {
+                    value: 'claude-code-cli',
+                    label: t('providersPage.form.fingerprintProfileClaudeCodeCli'),
+                  },
+                ]}
+                onChange={(value) => updateField('fingerprintProfile', value)}
+                disabled={mutating}
+                ariaLabelledBy={`${fid}-fingerprint-profile-label`}
+              />
+              <small className={styles.labelHint}>
+                {t('providersPage.form.fingerprintProfileHint')}
+              </small>
+            </div>
+          ) : null}
+
+          {descriptor.supportsCloak && form.cloak ? (
+            <Collapsible
+              label={t('providersPage.form.cloakSection')}
+              hint={countHint(cloakConfigured)}
+            >
+              <div className={styles.section}>
+                <div className={styles.field}>
+                  <label id={`${fid}-cloak-mode-label`} className={styles.label}>
+                    {t('providersPage.form.cloakMode')}
+                  </label>
+                  <Select
+                    id={`${fid}-cloak-mode`}
+                    value={form.cloak.mode}
+                    options={[
+                      { value: '', label: t('providersPage.form.cloakModeDefault') },
+                      { value: 'auto', label: t('providersPage.form.cloakModeAuto') },
+                      { value: 'always', label: t('providersPage.form.cloakModeAlways') },
+                      { value: 'never', label: t('providersPage.form.cloakModeNever') },
+                    ]}
+                    onChange={(value) => updateCloak('mode', value)}
+                    disabled={mutating}
+                    ariaLabelledBy={`${fid}-cloak-mode-label`}
+                  />
+                </div>
+                <label className={styles.checkboxRow}>
+                  <input
+                    type="checkbox"
+                    className={styles.checkboxBox}
+                    checked={form.cloak.strictMode}
+                    disabled={mutating}
+                    onChange={(e) => updateCloak('strictMode', e.target.checked)}
+                  />
+                  <span className={styles.checkboxText}>
+                    <span>{t('providersPage.form.cloakStrict')}</span>
+                  </span>
+                </label>
+                <label className={styles.checkboxRow}>
+                  <input
+                    type="checkbox"
+                    className={styles.checkboxBox}
+                    checked={form.cloak.cacheUserId}
+                    disabled={mutating}
+                    onChange={(e) => updateCloak('cacheUserId', e.target.checked)}
+                  />
+                  <span className={styles.checkboxText}>
+                    <span>{t('providersPage.form.cloakCacheUserId')}</span>
+                    <small>{t('providersPage.form.cloakCacheUserIdHint')}</small>
+                  </span>
+                </label>
+                <div className={styles.field}>
+                  <label className={styles.label} htmlFor={`${fid}-cloak-words`}>
+                    {t('providersPage.form.cloakSensitiveWords')}
+                  </label>
+                  <textarea
+                    id={`${fid}-cloak-words`}
+                    className={styles.textarea}
+                    rows={3}
+                    value={form.cloak.sensitiveWordsText}
+                    onChange={(e) => updateCloak('sensitiveWordsText', e.target.value)}
+                    disabled={mutating}
+                  />
+                </div>
+              </div>
+            </Collapsible>
+          ) : null}
+        </div>
+      </Collapsible>
     </form>
   );
 }

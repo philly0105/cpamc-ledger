@@ -462,3 +462,28 @@
     transition: none;
   }
 }
+
+/* ---------- API key 列表：计数与「已移除 · 撤销」行 ---------- */
+
+.blockCount {
+  margin-left: 8px;
+  font-family: $font-mono;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+}
+
+.removedRow {
+  border-left: 3px solid var(--amber-color);
+  background: color-mix(in srgb, var(--amber-10) 50%, transparent);
+}
+
+.removedPill {
+  color: var(--amber-text);
+  background: var(--amber-10);
+}
+
+.removedTitle {
+  text-decoration: line-through;
+  color: var(--text-tertiary);
+}

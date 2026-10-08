@@ -2,7 +2,7 @@ import { useId } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Collapsible } from '@/components/ui/Collapsible';
 import { Select } from '@/components/ui/Select';
-import type { RuntimePolicyDraft } from '../../runtimePolicy';
+import { countPolicyOverrides, type RuntimePolicyDraft } from '../../runtimePolicy';
 import { ErrorRulesEditor } from './ErrorRulesEditor';
 import styles from './sharedForm.module.scss';
 
@@ -23,8 +23,14 @@ export function RuntimePolicyEditor({
   const id = useId();
   const key = 'providersPage.runtimePolicy';
 
+  const overrides = countPolicyOverrides(value);
+
   return (
-    <Collapsible label={t(`${key}.title`)} aria-describedby={`${id}-description`}>
+    <Collapsible
+      label={t(`${key}.title`)}
+      hint={t('providersPage.form.overridesCount', { count: overrides })}
+      aria-describedby={`${id}-description`}
+    >
       <div className={styles.section}>
         <p id={`${id}-description`} className={styles.sectionDesc}>
           {t(`${key}.description`)}

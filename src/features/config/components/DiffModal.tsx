@@ -4,6 +4,7 @@ import { Text } from '@codemirror/state';
 import { Chunk } from '@codemirror/merge';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
+import type { ConfigChangeEntry } from '../uiState';
 import styles from './DiffModal.module.scss';
 
 type DiffModalProps = {
@@ -13,6 +14,8 @@ type DiffModalProps = {
   onConfirm: () => void;
   onCancel: () => void;
   loading?: boolean;
+  /** 字段级变更列表（标签 / 分区 / 旧 → 新），显示在 YAML diff 之上。 */
+  changes?: ConfigChangeEntry[];
 };
 
 type UnifiedLineType = 'context' | 'addition' | 'deletion';
@@ -206,6 +209,7 @@ export function DiffModal({
   onConfirm,
   onCancel,
   loading = false,
+  changes = [],
 }: DiffModalProps) {
   const { t } = useTranslation();
 
@@ -234,6 +238,33 @@ export function DiffModal({
       }
     >
       <div className={styles.content}>
+        {changes.length > 0 ? (
+          <section
+            className={styles.changeList}
+            aria-label={t('config_management.diff.changes_title', { count: changes.length })}
+          >
+            <h3 className={styles.changeListTitle}>
+              {t('config_management.diff.changes_title', { count: changes.length })}
+            </h3>
+            <ul className={styles.changeRows}>
+              {changes.map((change) => (
+                <li key={change.fieldId} className={styles.changeRow}>
+                  <span className={styles.changeLabel}>
+                    {change.label}
+                    <span className={styles.changeSection}>{change.section}</span>
+                  </span>
+                  <span className={styles.changeValues}>
+                    <span className={styles.changeFrom}>{change.from}</span>
+                    <span className={styles.changeArrow} aria-hidden="true">
+                      →
+                    </span>
+                    <span className={styles.changeTo}>{change.to}</span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
         {diff.hunks.length === 0 ? (
           <div className={styles.emptyState}>{t('config_management.diff.no_changes')}</div>
         ) : (

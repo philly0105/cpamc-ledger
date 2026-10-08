@@ -1,11 +1,22 @@
 import { useId } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Collapsible } from '@/components/ui/Collapsible';
 import { Input } from '@/components/ui/Input';
 import type { ConfigSectionProps } from '../../types';
+import { ConfigCollapsible } from '../ConfigCollapsible';
 import { FieldAnchor, FieldShell, FieldStack, ToggleRow } from '../fields/FieldPrimitives';
 import { StringListEditor } from '../blocks/StringListEditor';
 import { getValidationMessage } from '../blocks/shared';
+
+const DISCOVERY_FIELD_IDS = [
+  'discoveryEnabled',
+  'discoveryServiceName',
+  'discoveryServiceType',
+  'discoverySubtypes',
+  'discoveryInterfacesInclude',
+  'discoveryInterfacesExclude',
+  'discoveryAuthRequired',
+  'discoveryAdvertiseManagement',
+];
 
 /** Kept mounted inside native details so search can reveal every discovery field. */
 export function SectionDiscovery({
@@ -19,10 +30,11 @@ export function SectionDiscovery({
   const serviceTypeError = getValidationMessage(t, validationErrors?.discoveryServiceType);
 
   return (
-    <Collapsible
+    <ConfigCollapsible
       label={t('config_management.visual.serverExtras.discoveryTitle')}
       hint={t('config_management.visual.serverExtras.discoveryHint')}
       defaultOpen={false}
+      fieldIds={DISCOVERY_FIELD_IDS}
     >
       <FieldStack>
         <FieldAnchor fieldId="discoveryEnabled">
@@ -147,6 +159,6 @@ export function SectionDiscovery({
           />
         </FieldAnchor>
       </FieldStack>
-    </Collapsible>
+    </ConfigCollapsible>
   );
 }

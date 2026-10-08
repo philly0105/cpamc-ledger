@@ -174,31 +174,65 @@
   flex: 0 0 auto;
 }
 
-// 连接信息框
-.connectionBox {
-  background: var(--bg-secondary);
-  border: 1px dashed var(--border-color);
-  border-radius: $radius-md;
-  padding: $spacing-md;
+// 连接地址行："Connecting to <url> [Change]"
+.connectionRow {
   display: flex;
-  flex-direction: column;
-  gap: $spacing-xs;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: $spacing-xs $spacing-sm;
+  font-size: 14px;
+  color: var(--text-secondary);
+}
 
-  .label {
-    color: var(--text-secondary);
-    font-size: 14px;
+.connectionLabel {
+  flex: 0 0 auto;
+}
+
+.connectionValue {
+  font-family: $font-mono;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+
+.connectionChange {
+  border: none;
+  background: none;
+  padding: 0;
+  margin-left: auto;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--primary-color);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+
+  &:focus-visible {
+    outline: var(--focus-ring);
+    outline-offset: 2px;
+    border-radius: var(--radius-sm);
   }
+}
 
-  .value {
-    font-weight: 700;
+.connectionPreview {
+  code {
+    font-family: $font-mono;
     color: var(--text-primary);
-    word-break: break-all;
+    overflow-wrap: anywhere;
   }
+}
 
-  .hint {
-    color: var(--text-secondary);
-    font-size: 12px;
-  }
+// 自动恢复会话失败的一行说明
+.restoreNote {
+  background: var(--warning-bg);
+  border: 1px solid var(--warning-border);
+  border-radius: $radius-md;
+  padding: $spacing-sm $spacing-md;
+  color: var(--warning-text);
+  font-size: 13px;
+  line-height: 1.5;
 }
 
 // 复选框行
@@ -214,14 +248,22 @@
   font-weight: 500;
 }
 
-// 错误提示框
+// 错误提示框（紧贴提交按钮上方）
 .errorBox {
-  background: rgba($error-color, 0.1);
-  border: 1px solid rgba($error-color, 0.4);
+  background: var(--danger-bg);
+  border: 1px solid var(--danger-border);
   border-radius: $radius-md;
   padding: $spacing-sm $spacing-md;
-  color: $error-color;
+  color: var(--danger-text);
   font-size: 14px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.errorCauses {
+  margin: $spacing-xs 0 0;
+  padding-left: 18px;
+  font-size: 13px;
 }
 
 // ========== 启动动画（右侧） ==========
@@ -275,6 +317,18 @@
   align-items: center;
   gap: $spacing-md;
   animation: splashEnter 0.6s ease-out;
+}
+
+// 自动登录成功：淡出后立即跳转
+.splashExit {
+  animation: splashExit 0.3s ease-out forwards;
+}
+
+@keyframes splashExit {
+  to {
+    opacity: 0;
+    transform: scale(0.96);
+  }
 }
 
 // 启动动画 Logo

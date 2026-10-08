@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
-import { IconAlertTriangle, IconExternalLink, IconPlug } from '@/components/ui/icons';
+import { IconAlertTriangle, IconExternalLink } from '@/components/ui/icons';
 import { useAuthStore } from '@/stores';
 import type { PluginStoreEntry } from '@/types';
 import {
@@ -13,42 +13,41 @@ import {
   isDefaultPluginStoreSource,
   resolvePluginAssetURL,
 } from '../pluginResources';
+import { PluginLogo } from './PluginLogo';
 import styles from './PluginInstallGateModal.module.scss';
 
 interface PluginInstallGateModalProps {
   open: boolean;
   entry: PluginStoreEntry | null;
   isUpdate: boolean;
+  /** Human-readable target version shown in the confirm button (e.g. "v1.2.0"). */
+  targetVersion: string;
   installing: boolean;
   onClose: () => void;
   onConfirm: () => void | Promise<void>;
 }
 
-function GateLogo({ src }: { src: string }) {
-  const [failed, setFailed] = useState(false);
-  return src && !failed ? (
-    <img src={src} alt="" onError={() => setFailed(true)} />
-  ) : (
-    <IconPlug size={26} />
-  );
-}
-
+/**
+ * Third-party install gate. Step 1 shows identity and risks together; step 2 is the
+ * typed confirmation. Updating an already-installed plugin from the same source
+ * skips the typing and confirms from step 1 with the old -> new version.
+ */
 export function PluginInstallGateModal({
   open,
   entry,
   isUpdate,
+  targetVersion,
   installing,
   onClose,
   onConfirm,
 }: PluginInstallGateModalProps) {
   const { t } = useTranslation();
   const apiBase = useAuthStore((state) => state.apiBase);
-  const [step, setStep] = useState(1);
+  const [step, setStep] = useState<1 | 2>(1);
   const [typed, setTyped] = useState('');
   const [wasOpen, setWasOpen] = useState(false);
 
-  // Reset the gauntlet to step 1 on each fresh open. Adjusting state during render
-  // (React's "you might not need an effect" guidance) avoids a setState-in-effect.
+  // Reset on each fresh open; adjusting state during render avoids a setState-in-effect.
   if (open !== wasOpen) {
     setWasOpen(open);
     if (open) {
@@ -70,6 +69,7 @@ export function PluginInstallGateModal({
     ? t('plugin_store.cli_proxy_api_source')
     : rawSourceText;
   const tokenMatches = typed.trim() === token;
+  const requireTypedConfirm = !isUpdate;
 
   const handleClose = () => {
     if (installing) return;
@@ -84,11 +84,13 @@ export function PluginInstallGateModal({
     }
   };
 
+  const confirmLabel = isUpdate
+    ? t('plugin_store.update_to_version', { version: targetVersion })
+    : t('plugin_store.gate_step3_action');
+
   const identity = (
     <div className={styles.identity}>
-      <div className={styles.logoBox} aria-hidden="true">
-        <GateLogo src={logo} />
-      </div>
+      <PluginLogo src={logo} size={52} />
       <h3 className={styles.name}>{title}</h3>
       {repositoryURL ? (
         <a
@@ -108,6 +110,14 @@ export function PluginInstallGateModal({
       {sourceText ? (
         <p className={styles.source}>{t('plugin_store.source_name', { source: sourceText })}</p>
       ) : null}
+      {isUpdate && entry.installedVersion ? (
+        <p className={styles.source}>
+          {t('plugin_store.version_arrow', {
+            from: entry.installedVersion.replace(/^v/i, ''),
+            to: targetVersion.replace(/^v/i, ''),
+          })}
+        </p>
+      ) : null}
     </div>
   );
 
@@ -115,13 +125,6 @@ export function PluginInstallGateModal({
   let footer: ReactNode;
 
   if (step === 1) {
-    body = identity;
-    footer = (
-      <Button variant="secondary" fullWidth onClick={() => setStep(2)}>
-        {t('plugin_store.gate_step1_action')}
-      </Button>
-    );
-  } else if (step === 2) {
     body = (
       <>
         {identity}
@@ -145,9 +148,19 @@ export function PluginInstallGateModal({
         </div>
       </>
     );
-    footer = (
-      <Button variant="secondary" fullWidth onClick={() => setStep(3)}>
+    footer = requireTypedConfirm ? (
+      <Button variant="secondary" fullWidth onClick={() => setStep(2)}>
         {t('plugin_store.gate_step2_action')}
+      </Button>
+    ) : (
+      <Button
+        variant="danger"
+        fullWidth
+        onClick={handleFinalConfirm}
+        disabled={installing}
+        loading={installing}
+      >
+        {confirmLabel}
       </Button>
     );
   } else {
@@ -172,15 +185,19 @@ export function PluginInstallGateModal({
       </>
     );
     footer = (
-      <Button
-        variant="danger"
-        fullWidth
-        onClick={handleFinalConfirm}
-        disabled={!tokenMatches || installing}
-        loading={installing}
-      >
-        {t('plugin_store.gate_step3_action')}
-      </Button>
+      <div className={styles.footerRow}>
+        <Button variant="ghost" onClick={() => setStep(1)} disabled={installing}>
+          {t('common.back')}
+        </Button>
+        <Button
+          variant="danger"
+          onClick={handleFinalConfirm}
+          disabled={!tokenMatches || installing}
+          loading={installing}
+        >
+          {confirmLabel}
+        </Button>
+      </div>
     );
   }
 

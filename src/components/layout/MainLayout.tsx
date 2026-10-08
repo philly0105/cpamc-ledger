@@ -594,7 +594,10 @@ export function MainLayout() {
           return [
             {
               path: resource.route,
-              label: resource.label,
+              label:
+                resource.label === group.pluginTitle
+                  ? resource.label
+                  : `${group.pluginTitle}: ${resource.label}`,
               meta: resource.description,
               icon: <PluginSidebarIcon src={pluginLogo} />,
             },

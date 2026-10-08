@@ -20,8 +20,12 @@ export interface ConfigFieldSearchEntry {
   /** Optional secondary i18n key shown next to the label to disambiguate duplicates
    *  (e.g. Claude vs Codex "User-Agent"). Also searchable. */
   qualifierKey?: string;
-  /** Optional hint i18n key — searchable but not shown in results. */
+  /** Hint i18n key — rendered under the control and searchable. Required for every field
+   *  (tests/configFieldHints.test.ts); optional in the type only for the payload-level
+   *  coarse entries that render their own description. */
   hintKey?: string;
+  /** The backend only applies this value after a restart (shown as a pill + post-save notice). */
+  restartRequired?: boolean;
   /** Backend YAML key aliases, e.g. ['proxy-url']. Static strings (language-agnostic). */
   yamlKeys?: string[];
   /** Extra synonyms to match against (language-agnostic, lowercase). */
@@ -225,6 +229,7 @@ export const CONFIG_FIELD_SEARCH_INDEX: ConfigFieldSearchEntry[] = [
   {
     fieldId: 'trustedProxies',
     sectionId: 'connectivity',
+    restartRequired: true,
     labelKey: L('serverExtras.trustedProxies.label'),
     hintKey: L('serverExtras.trustedProxies.hint'),
     yamlKeys: ['server', 'trusted-proxies'],
@@ -289,12 +294,14 @@ export const CONFIG_FIELD_SEARCH_INDEX: ConfigFieldSearchEntry[] = [
     fieldId: 'host',
     sectionId: 'connectivity',
     labelKey: L('sections.server.host'),
+    hintKey: L('sections.server.host_hint'),
     yamlKeys: ['server', 'host'],
   },
   {
     fieldId: 'port',
     sectionId: 'connectivity',
     labelKey: L('sections.server.port'),
+    hintKey: L('sections.server.port_hint'),
     yamlKeys: ['server', 'port'],
   },
   {
@@ -308,6 +315,7 @@ export const CONFIG_FIELD_SEARCH_INDEX: ConfigFieldSearchEntry[] = [
     fieldId: 'apiKeys',
     sectionId: 'connectivity',
     labelKey: L('api_keys.label'),
+    hintKey: L('api_keys.hint'),
     yamlKeys: ['access', 'api-keys'],
     keywords: ['api key', 'apikey', 'token'],
   },
@@ -323,6 +331,7 @@ export const CONFIG_FIELD_SEARCH_INDEX: ConfigFieldSearchEntry[] = [
     fieldId: 'tlsCert',
     sectionId: 'connectivity',
     labelKey: L('sections.tls.cert'),
+    hintKey: L('sections.tls.cert_hint'),
     yamlKeys: ['server', 'tls', 'cert'],
     keywords: ['tls', 'ssl', 'certificate'],
   },
@@ -330,6 +339,7 @@ export const CONFIG_FIELD_SEARCH_INDEX: ConfigFieldSearchEntry[] = [
     fieldId: 'tlsKey',
     sectionId: 'connectivity',
     labelKey: L('sections.tls.key'),
+    hintKey: L('sections.tls.key_hint'),
     yamlKeys: ['server', 'tls', 'key'],
     keywords: ['tls', 'ssl', 'private key'],
   },
@@ -344,24 +354,28 @@ export const CONFIG_FIELD_SEARCH_INDEX: ConfigFieldSearchEntry[] = [
     fieldId: 'rmDisableControlPanel',
     sectionId: 'connectivity',
     labelKey: L('sections.remote.disable_panel'),
+    hintKey: L('sections.remote.disable_panel_desc'),
     yamlKeys: ['management', 'disable-control-panel'],
   },
   {
     fieldId: 'rmDisableAutoUpdatePanel',
     sectionId: 'connectivity',
     labelKey: L('sections.remote.disable_auto_update_panel'),
+    hintKey: L('sections.remote.disable_auto_update_panel_desc'),
     yamlKeys: ['management', 'disable-auto-update-panel'],
   },
   {
     fieldId: 'rmSecretKey',
     sectionId: 'connectivity',
     labelKey: L('sections.remote.secret_key'),
+    hintKey: L('sections.remote.secret_key_hint'),
     yamlKeys: ['management', 'secret-key'],
   },
   {
     fieldId: 'rmPanelRepo',
     sectionId: 'connectivity',
     labelKey: L('sections.remote.panel_repo'),
+    hintKey: L('sections.remote.panel_repo_hint'),
     yamlKeys: ['management', 'panel-github-repository'],
   },
   // ── network ───────────────────────────────────────────────────────────────
@@ -369,12 +383,14 @@ export const CONFIG_FIELD_SEARCH_INDEX: ConfigFieldSearchEntry[] = [
     fieldId: 'proxyUrl',
     sectionId: 'network',
     labelKey: L('sections.network.proxy_url'),
+    hintKey: L('sections.network.proxy_url_hint'),
     yamlKeys: ['requests', 'proxy-url'],
   },
   {
     fieldId: 'requestRetry',
     sectionId: 'network',
     labelKey: L('sections.network.request_retry'),
+    hintKey: L('sections.network.request_retry_hint'),
     yamlKeys: ['routing', 'retry', 'request-retry'],
   },
   {
@@ -425,6 +441,7 @@ export const CONFIG_FIELD_SEARCH_INDEX: ConfigFieldSearchEntry[] = [
     fieldId: 'routingSessionAffinityTTL',
     sectionId: 'network',
     labelKey: L('sections.network.session_affinity_ttl'),
+    hintKey: L('sections.network.session_affinity_ttl_hint'),
     yamlKeys: ['routing', 'session-affinity-ttl'],
   },
   {
@@ -452,6 +469,7 @@ export const CONFIG_FIELD_SEARCH_INDEX: ConfigFieldSearchEntry[] = [
     fieldId: 'routingSessionAffinity',
     sectionId: 'network',
     labelKey: L('sections.network.session_affinity'),
+    hintKey: L('sections.network.session_affinity_desc'),
     yamlKeys: ['routing', 'session-affinity'],
   },
   {
@@ -473,6 +491,7 @@ export const CONFIG_FIELD_SEARCH_INDEX: ConfigFieldSearchEntry[] = [
   {
     fieldId: 'commercialMode',
     sectionId: 'logging',
+    restartRequired: true,
     labelKey: L('sections.system.commercial_mode'),
     hintKey: L('sections.system.commercial_mode_desc'),
     yamlKeys: ['server', 'commercial-mode'],
@@ -488,12 +507,14 @@ export const CONFIG_FIELD_SEARCH_INDEX: ConfigFieldSearchEntry[] = [
     fieldId: 'logsMaxTotalSizeMb',
     sectionId: 'logging',
     labelKey: L('sections.system.logs_max_size'),
+    hintKey: L('sections.system.logs_max_size_hint'),
     yamlKeys: ['observability', 'logs', 'logs-max-total-size-mb'],
   },
   {
     fieldId: 'errorLogsMaxFiles',
     sectionId: 'logging',
     labelKey: L('sections.system.error_logs_max_files'),
+    hintKey: L('sections.system.error_logs_max_files_hint'),
     yamlKeys: ['observability', 'logs', 'error-logs-max-files'],
   },
   {
@@ -529,6 +550,7 @@ export const CONFIG_FIELD_SEARCH_INDEX: ConfigFieldSearchEntry[] = [
     fieldId: 'quotaAntigravityCredits',
     sectionId: 'quota',
     labelKey: L('sections.quota.antigravity_credits'),
+    hintKey: L('sections.quota.antigravity_credits_desc'),
     yamlKeys: ['oauth', 'providers', 'antigravity', 'antigravity-credits'],
   },
   // ── streaming ─────────────────────────────────────────────────────────────
@@ -610,6 +632,7 @@ export const CONFIG_FIELD_SEARCH_INDEX: ConfigFieldSearchEntry[] = [
     fieldId: 'claudeHeaderUserAgent',
     sectionId: 'advanced',
     labelKey: L('sections.headers.user_agent'),
+    hintKey: L('sections.headers.user_agent_hint'),
     qualifierKey: L('sections.headers.claude_title'),
     yamlKeys: ['upstream', 'claude', 'header-defaults', 'user-agent'],
     keywords: ['claude'],
@@ -618,6 +641,7 @@ export const CONFIG_FIELD_SEARCH_INDEX: ConfigFieldSearchEntry[] = [
     fieldId: 'claudeHeaderPackageVersion',
     sectionId: 'advanced',
     labelKey: L('sections.headers.package_version'),
+    hintKey: L('sections.headers.package_version_hint'),
     qualifierKey: L('sections.headers.claude_title'),
     yamlKeys: ['upstream', 'claude', 'header-defaults', 'package-version'],
     keywords: ['claude'],
@@ -626,6 +650,7 @@ export const CONFIG_FIELD_SEARCH_INDEX: ConfigFieldSearchEntry[] = [
     fieldId: 'claudeHeaderRuntimeVersion',
     sectionId: 'advanced',
     labelKey: L('sections.headers.runtime_version'),
+    hintKey: L('sections.headers.runtime_version_hint'),
     qualifierKey: L('sections.headers.claude_title'),
     yamlKeys: ['upstream', 'claude', 'header-defaults', 'runtime-version'],
     keywords: ['claude'],
@@ -634,6 +659,7 @@ export const CONFIG_FIELD_SEARCH_INDEX: ConfigFieldSearchEntry[] = [
     fieldId: 'claudeHeaderOs',
     sectionId: 'advanced',
     labelKey: L('sections.headers.os'),
+    hintKey: L('sections.headers.os_hint'),
     qualifierKey: L('sections.headers.claude_title'),
     yamlKeys: ['upstream', 'claude', 'header-defaults', 'os'],
     keywords: ['claude'],
@@ -642,6 +668,7 @@ export const CONFIG_FIELD_SEARCH_INDEX: ConfigFieldSearchEntry[] = [
     fieldId: 'claudeHeaderArch',
     sectionId: 'advanced',
     labelKey: L('sections.headers.arch'),
+    hintKey: L('sections.headers.arch_hint'),
     qualifierKey: L('sections.headers.claude_title'),
     yamlKeys: ['upstream', 'claude', 'header-defaults', 'arch'],
     keywords: ['claude'],
@@ -650,6 +677,7 @@ export const CONFIG_FIELD_SEARCH_INDEX: ConfigFieldSearchEntry[] = [
     fieldId: 'claudeHeaderTimeout',
     sectionId: 'advanced',
     labelKey: L('sections.headers.timeout'),
+    hintKey: L('sections.headers.timeout_hint'),
     qualifierKey: L('sections.headers.claude_title'),
     yamlKeys: ['upstream', 'claude', 'header-defaults', 'timeout'],
     keywords: ['claude'],
@@ -668,6 +696,7 @@ export const CONFIG_FIELD_SEARCH_INDEX: ConfigFieldSearchEntry[] = [
     fieldId: 'codexHeaderUserAgent',
     sectionId: 'advanced',
     labelKey: L('sections.headers.user_agent'),
+    hintKey: L('sections.headers.user_agent_hint'),
     qualifierKey: L('sections.headers.codex_title'),
     yamlKeys: ['oauth', 'providers', 'codex', 'header-defaults', 'user-agent'],
     keywords: ['codex'],
@@ -676,6 +705,7 @@ export const CONFIG_FIELD_SEARCH_INDEX: ConfigFieldSearchEntry[] = [
     fieldId: 'codexHeaderBetaFeatures',
     sectionId: 'advanced',
     labelKey: L('sections.headers.beta_features'),
+    hintKey: L('sections.headers.beta_features_hint'),
     qualifierKey: L('sections.headers.codex_title'),
     yamlKeys: ['oauth', 'providers', 'codex', 'header-defaults', 'beta-features'],
     keywords: ['codex'],
@@ -724,6 +754,11 @@ export const CONFIG_FIELD_SEARCH_INDEX: ConfigFieldSearchEntry[] = [
 ];
 
 const MAX_RESULTS = 8;
+
+/** Field ids whose change only takes effect after a backend restart (data-driven flag). */
+export const RESTART_REQUIRED_FIELD_IDS: ReadonlySet<string> = new Set(
+  CONFIG_FIELD_SEARCH_INDEX.filter((entry) => entry.restartRequired).map((entry) => entry.fieldId)
+);
 
 export function findConfigFieldById(
   fieldId: string | null | undefined

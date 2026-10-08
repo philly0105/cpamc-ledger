@@ -109,6 +109,18 @@
   background: color-mix(in srgb, var(--viz-failure) 12%, transparent);
 }
 
+/* 非阻断警告徽章：琥珀「!」 */
+.tabWarningBadge {
+  font-family: $font-mono;
+  font-size: 10.5px;
+  font-weight: 700;
+  line-height: 1.6;
+  color: var(--amber-text);
+  padding: 0 6px;
+  border-radius: $radius-full;
+  background: var(--amber-10);
+}
+
 /* 待保存脏点：6px 琥珀 */
 .tabDirtyDot {
   width: 6px;

@@ -1,7 +1,7 @@
 // 配置页 UI 状态的纯函数层：状态机、徽章分桶、脏字段归属、localStorage 读取。
 // 全部无副作用，由 tests/configUiState.test.ts 覆盖。
 
-import type { VisualConfigValidationErrors } from '@/types/visualConfig';
+import type { VisualConfigValidationErrors, VisualConfigValues } from '@/types/visualConfig';
 import {
   COMMON_FIELD_IDS,
   CONFIG_SECTION_IDS,
@@ -11,7 +11,12 @@ import {
   type ConfigEditorMode,
   type ConfigTabId,
 } from './constants';
-import { CONFIG_FIELD_SEARCH_INDEX, type VisualSectionId } from './searchIndex';
+import {
+  CONFIG_FIELD_SEARCH_INDEX,
+  RESTART_REQUIRED_FIELD_IDS,
+  type ConfigFieldSearchEntry,
+  type VisualSectionId,
+} from './searchIndex';
 
 /** 可视化编辑器暴露的配置项总数（头部 meta 行的「N 项配置」）。 */
 export const CONFIG_FIELD_COUNT = CONFIG_FIELD_SEARCH_INDEX.length;
@@ -35,6 +40,111 @@ const COMMON_FIELD_ID_SET: ReadonlySet<string> = new Set<string>(COMMON_FIELD_ID
 const COMMON_VALUE_KEYS: ReadonlySet<string> = new Set(
   COMMON_FIELD_IDS.flatMap((fieldId) => [...(FIELD_VALUE_KEYS[fieldId] ?? [])])
 );
+
+/** 脏叶值键 → fieldId（未知键忽略）。 */
+export function resolveDirtyFieldIds(dirtyFields: ReadonlySet<string>): string[] {
+  const ids = new Set<string>();
+  for (const valueKey of dirtyFields) {
+    const fieldId = VALUE_KEY_TO_FIELD_ID.get(valueKey);
+    if (fieldId) ids.add(fieldId);
+  }
+  return [...ids];
+}
+
+/** 每个正典分区的脏字段数（保存栏「3 unsaved: Network 2, Logging 1」），按分区顺序，跳过 0。 */
+export function summarizeDirtySections(
+  dirtyFields: ReadonlySet<string>
+): { sectionId: VisualSectionId; count: number }[] {
+  const counts = new Map<VisualSectionId, number>();
+  for (const fieldId of resolveDirtyFieldIds(dirtyFields)) {
+    const sectionId = FIELD_ID_TO_SECTION.get(fieldId);
+    if (sectionId) counts.set(sectionId, (counts.get(sectionId) ?? 0) + 1);
+  }
+  return CONFIG_SECTION_IDS.filter((id) => counts.has(id)).map((sectionId) => ({
+    sectionId,
+    count: counts.get(sectionId) ?? 0,
+  }));
+}
+
+/** 脏字段里需要重启后端才生效的 fieldId（保存后持久琥珀提示）。 */
+export function resolveRestartRequiredDirtyFields(dirtyFields: ReadonlySet<string>): string[] {
+  return resolveDirtyFieldIds(dirtyFields).filter((id) => RESTART_REQUIRED_FIELD_IDS.has(id));
+}
+
+/** 索引顺序里第一个带校验错误的字段（保存栏「修复错误」跳转目标）。 */
+export function findFirstErrorField(
+  validationErrors: VisualConfigValidationErrors | undefined,
+  hasPayloadValidationErrors: boolean
+): ConfigFieldSearchEntry | undefined {
+  const hit = CONFIG_FIELD_SEARCH_INDEX.find((entry) =>
+    (FIELD_VALUE_KEYS[entry.fieldId] ?? []).some((key) =>
+      Boolean(validationErrors?.[key as keyof VisualConfigValidationErrors])
+    )
+  );
+  if (hit) return hit;
+  return hasPayloadValidationErrors
+    ? CONFIG_FIELD_SEARCH_INDEX.find((entry) => entry.sectionId === 'payload')
+    : undefined;
+}
+
+type ChangeTranslate = (key: string, options?: Record<string, unknown>) => string;
+
+export type ConfigChangeEntry = {
+  fieldId: string;
+  label: string;
+  section: string;
+  from: string;
+  to: string;
+};
+
+function readLeaf(values: VisualConfigValues, key: string): unknown {
+  if (key.startsWith('streaming.')) {
+    return values.streaming[key.slice('streaming.'.length) as keyof VisualConfigValues['streaming']];
+  }
+  return values[key as keyof VisualConfigValues];
+}
+
+/** 审阅列表里的值显示：布尔 → On/Off，空串 → Not set，列表 → N items，对象 → 截断 JSON。 */
+export function formatChangeValue(key: string, value: unknown, t: ChangeTranslate): string {
+  if (typeof value === 'boolean') {
+    return t(value ? 'config_management.visual.field_state.on' : 'config_management.visual.field_state.off');
+  }
+  if (key === 'apiKeysText' && typeof value === 'string') {
+    const count = value.split('\n').filter((line) => line.trim()).length;
+    return t('config_management.visual.api_keys.count', { count });
+  }
+  if (typeof value === 'string') return value.trim() === '' ? t('common.not_set') : value;
+  if (Array.isArray(value)) return t('config_management.visual.field_state.items', { count: value.length });
+  if (value === null || value === undefined) return t('common.not_set');
+  const json = JSON.stringify(value);
+  return json.length > 60 ? `${json.slice(0, 57)}...` : json;
+}
+
+/** 审阅弹窗的字段级变更列表（标签 / 分区 / 旧值 → 新值），按索引顺序。 */
+export function buildChangeList(
+  dirtyFields: ReadonlySet<string>,
+  baseline: VisualConfigValues,
+  values: VisualConfigValues,
+  t: ChangeTranslate
+): ConfigChangeEntry[] {
+  const dirtyIds = new Set(resolveDirtyFieldIds(dirtyFields));
+  return CONFIG_FIELD_SEARCH_INDEX.filter((entry) => dirtyIds.has(entry.fieldId)).map((entry) => {
+    const keys = FIELD_VALUE_KEYS[entry.fieldId] ?? [];
+    const changedKeys = keys.filter((key) => dirtyFields.has(key));
+    const describe = (source: VisualConfigValues) =>
+      changedKeys.map((key) => formatChangeValue(key, readLeaf(source, key), t)).join(', ');
+    const label = entry.qualifierKey
+      ? `${t(entry.labelKey)} (${t(entry.qualifierKey)})`
+      : t(entry.labelKey);
+    return {
+      fieldId: entry.fieldId,
+      label,
+      section: t(`config_management.visual.sections.${entry.sectionId}.title`),
+      from: describe(baseline),
+      to: describe(values),
+    };
+  });
+}
 
 /** 脏字段集合 → 点亮脏点的 tabs。常用字段同时点亮 common 与其正典分区（两处都渲染它）。 */
 export function resolveDirtyTabs(dirtyFields: ReadonlySet<string>): ReadonlySet<ConfigTabId> {
@@ -179,14 +289,13 @@ export function resolveStatus(input: ConfigStatusInput): ConfigStatus {
 }
 
 export type HeaderMetaSegment = {
-  key: 'fields' | ConfigStatusKey | 'dirty_source' | 'errors';
+  key: ConfigStatusKey | 'dirty_source' | 'errors';
   labelKey: string;
   count?: number;
   tone: 'muted' | 'warning' | 'error' | 'ok';
 };
 
 export type HeaderMetaInput = {
-  fieldCount: number;
   status: ConfigStatus;
   dirtyCount: number;
   sourceDirty: boolean;
@@ -195,17 +304,10 @@ export type HeaderMetaInput = {
 
 /**
  * 头部 ▍mono meta 行直接消费页面状态机，避免 Header 与保存栏各自推导连接/加载状态。
- * 字段总数常驻；阻断状态优先，编辑状态再补充待保存和校验错误数量。
+ * 阻断状态优先，编辑状态再补充待保存和校验错误数量；字段总数移到搜索框占位文案。
  */
 export function buildHeaderMeta(input: HeaderMetaInput): HeaderMetaSegment[] {
-  const segments: HeaderMetaSegment[] = [
-    {
-      key: 'fields',
-      labelKey: 'config_management.meta_fields',
-      count: input.fieldCount,
-      tone: 'muted',
-    },
-  ];
+  const segments: HeaderMetaSegment[] = [];
   const { status } = input;
 
   if (
@@ -265,4 +367,9 @@ export function readSavedSection(raw: string | null): ConfigTabId {
   return raw !== null && (CONFIG_TAB_IDS as readonly string[]).includes(raw)
     ? (raw as ConfigTabId)
     : 'common';
+}
+
+/** 远程访问已开但管理密钥为空：远程客户端无法登录（Connectivity 分区与页面 tab 共用）。 */
+export function hasRemoteKeyWarning(values: { rmAllowRemote: boolean; rmSecretKey: string }) {
+  return values.rmAllowRemote && values.rmSecretKey.trim() === '';
 }

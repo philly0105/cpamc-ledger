@@ -1281,3 +1281,64 @@
   background: var(--failure-badge-bg);
   color: var(--failure-badge-text);
 }
+
+/* ---------- 表单分区 / 校验 ---------- */
+
+.formSection {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.formSectionHeading {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.required {
+  margin-left: 3px;
+  color: var(--destructive-color);
+}
+
+.inputInvalid {
+  border-color: var(--destructive-color) !important;
+  box-shadow: 0 0 0 3px var(--destructive-10) !important;
+}
+
+.fieldError {
+  font-size: 11.5px;
+  color: var(--destructive-color);
+}
+
+.columnHeaders {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  gap: 8px;
+  padding: 0 2px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+
+  > :last-child {
+    min-width: 64px;
+  }
+
+  @media (max-width: 520px) {
+    display: none;
+  }
+}
+
+.headerRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  gap: 8px;
+}

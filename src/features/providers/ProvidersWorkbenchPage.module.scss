@@ -37,3 +37,29 @@
     gap: 16px;
   }
 }
+
+/* 加载骨架:与真实布局(页头 / 侧栏 / 行)对齐 */
+.skeletonHeader,
+.skeletonRail,
+.skeletonPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.skeletonRail {
+  display: none;
+
+  @media (min-width: 1280px) {
+    display: flex;
+  }
+}
+
+.skeletonPanel {
+  gap: 14px;
+  padding: 20px;
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  background: var(--bg-primary);
+}

@@ -2,6 +2,7 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { usePageTransitionLayer } from '@/components/common/PageTransitionLayer';
 import { useHeaderRefresh } from '@/hooks/useHeaderRefresh';
+import { ErrorBanner } from '@/components/ui/ErrorBanner';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { useAuthStore, useNotificationStore } from '@/stores';
 import { useProviderRecentRequests } from '@/components/providers/hooks/useProviderRecentRequests';
@@ -14,10 +15,13 @@ import {
 import type { OpenAIProviderConfig } from '@/types';
 import { ProviderHeaderCard } from './components/ProviderHeaderCard';
 import { ProviderCategoryList } from './components/ProviderCategoryList';
+import { ProviderResourceLedgerSkeleton } from './components/ProviderResourceLedger';
 import { ProviderResourcePanel } from './components/ProviderResourcePanel';
 import type { ProviderPanelControls } from './components/ProviderResourcePanel';
 import { SponsorQuickStartPanel } from './components/SponsorQuickStartPanel';
+import { useProviderTestStore } from './providerTestStore';
 import { ProviderSheet, type ProviderSheetHandle } from './sheets/ProviderSheet';
+import type { ConnectivityErrorMessages } from './sheets/forms/connectivityProbe';
 import { isMultiProtocolSponsorBrand } from './sponsorDefinitions';
 import { isSponsorPartialMutationError } from './sponsorMutationRecovery';
 import { useProviderWorkbench } from './useProviderWorkbench';
@@ -77,24 +81,29 @@ const matchesFilter = (r: ProviderResource, normalized: string): boolean => {
 const getResourceSortName = (resource: ProviderResource): string =>
   (resource.name ?? resource.identifier ?? resource.apiKeyPreview ?? '').toLowerCase();
 
-const getResourceRecentSuccess = (
+const getResourceRecentStats = (
   resource: ProviderResource,
   usageByProvider: ProviderRecentUsageMap
-): number => {
+): { success: number; failure: number } => {
   if (isMultiProtocolSponsorBrand(resource.brand)) {
-    return 0;
+    return { success: 0, failure: 0 };
   }
   if (resource.brand === 'openaiCompatibility') {
-    return getOpenAIProviderRecentWindowStats(resource.raw as OpenAIProviderConfig, usageByProvider)
-      .success;
+    return getOpenAIProviderRecentWindowStats(
+      resource.raw as OpenAIProviderConfig,
+      usageByProvider
+    );
   }
   return getProviderRecentWindowStats(
     usageByProvider,
     getProviderUsageKey(resource.brand),
     resource.apiKey ?? undefined,
     resource.baseUrl ?? undefined
-  ).success;
+  );
 };
+
+const needsAttention = (resource: ProviderResource, usageByProvider: ProviderRecentUsageMap) =>
+  resource.disabled || getResourceRecentStats(resource, usageByProvider).failure > 0;
 
 export function ProvidersWorkbenchPage({ fixedBrand }: ProvidersWorkbenchPageProps = {}) {
   const { t, i18n } = useTranslation();
@@ -114,6 +123,22 @@ export function ProvidersWorkbenchPage({ fixedBrand }: ProvidersWorkbenchPagePro
   });
   const sheetRef = useRef<ProviderSheetHandle>(null);
 
+  const testResults = useProviderTestStore((s) => s.results);
+  const testInFlight = useProviderTestStore((s) => s.inFlight);
+  const runTest = useProviderTestStore((s) => s.runTest);
+  const runTestAll = useProviderTestStore((s) => s.runTestAll);
+  const connectivityMessages = useMemo<ConnectivityErrorMessages>(
+    () => ({
+      baseUrlRequired: t('providersPage.connectivity.baseUrlRequired'),
+      endpointInvalid: t('providersPage.connectivity.endpointInvalid'),
+      apiKeyRequired: t('providersPage.connectivity.apiKeyRequired'),
+      modelRequired: t('providersPage.connectivity.modelRequired'),
+      timeout: (seconds: number) => t('providersPage.connectivity.timeout', { seconds }),
+      requestFailed: t('providersPage.connectivity.requestFailed'),
+    }),
+    [t]
+  );
+
   const connected = connectionStatus === 'connected';
   const { usageByProvider, refreshRecentRequests } = useProviderRecentRequests({
     enabled: connected,
@@ -125,11 +150,8 @@ export function ProvidersWorkbenchPage({ fixedBrand }: ProvidersWorkbenchPagePro
 
   useHeaderRefresh(handleRefresh, isCurrentLayer);
 
-  const disableMutations =
-    connectionStatus !== 'connected' ||
-    workbench.mutating ||
-    workbench.isFetching ||
-    workbench.isError;
+  // 后台刷新不锁操作;只有断连、变更进行中或加载失败时才禁用。
+  const disableMutations = !connected || workbench.mutating || workbench.isError;
 
   const persistUiState = useCallback(
     (updater: (prev: ProvidersWorkbenchUiState) => ProvidersWorkbenchUiState) => {
@@ -223,8 +245,8 @@ export function ProvidersWorkbenchPage({ fixedBrand }: ProvidersWorkbenchPagePro
           ? getResourceSortName(a).localeCompare(getResourceSortName(b))
           : providerSortBy === 'priority'
             ? a.priority - b.priority
-            : getResourceRecentSuccess(a, usageByProvider) -
-              getResourceRecentSuccess(b, usageByProvider);
+            : getResourceRecentStats(a, usageByProvider).success -
+              getResourceRecentStats(b, usageByProvider).success;
       const diff = sortDiff || a.originalIndex - b.originalIndex;
       return providerSortDir === 'asc' ? diff : -diff;
     });
@@ -265,10 +287,25 @@ export function ProvidersWorkbenchPage({ fixedBrand }: ProvidersWorkbenchPagePro
     [groups]
   );
 
-  const providerFamilies = useMemo(
-    () => groups.filter((g) => g.resources.length > 0).length,
-    [groups]
+  const totalAttention = useMemo(
+    () =>
+      groups.reduce(
+        (sum, g) => sum + g.resources.filter((r) => needsAttention(r, usageByProvider)).length,
+        0
+      ),
+    [groups, usageByProvider]
   );
+
+  const attentionBrands = useMemo(
+    () =>
+      new Set<ProviderBrand>(
+        groups
+          .filter((g) => g.resources.some((r) => needsAttention(r, usageByProvider)))
+          .map((g) => g.id)
+      ),
+    [groups, usageByProvider]
+  );
+
   const quickStartResource = useMemo(
     () => (fixedBrand === 'apikeyFun' && activeGroup ? (activeGroup.resources[0] ?? null) : null),
     [activeGroup, fixedBrand]
@@ -279,7 +316,12 @@ export function ProvidersWorkbenchPage({ fixedBrand }: ProvidersWorkbenchPagePro
     : t('providersPage.modelCatalog.notLoaded');
   const headerTitle = fixedBrand === 'apikeyFun' ? t('nav.quick_start') : undefined;
   const errorBanner = workbench.errorMessage ? (
-    <div className="error-box">{workbench.errorMessage}</div>
+    <ErrorBanner
+      message={workbench.errorMessage}
+      onRetry={() => void handleRefresh()}
+      retryLabel={t('common.retry')}
+      retrying={workbench.isFetching}
+    />
   ) : null;
 
   const openCreate = useCallback(() => {
@@ -320,7 +362,7 @@ export function ProvidersWorkbenchPage({ fixedBrand }: ProvidersWorkbenchPagePro
         onConfirm: async () => {
           try {
             await workbench.deleteProvider(resource);
-            showNotification(t('providersPage.toast.deleted'), 'success');
+            showNotification(t('providersPage.toast.deleted', { name }), 'success');
           } catch (err) {
             if (isSponsorPartialMutationError(err)) {
               showNotification(t('providersPage.sponsor.partialMutationWarning'), 'warning');
@@ -337,10 +379,13 @@ export function ProvidersWorkbenchPage({ fixedBrand }: ProvidersWorkbenchPagePro
 
   const handleToggleDisabled = useCallback(
     async (resource: ProviderResource, disabled: boolean) => {
+      const name = resource.name ?? resource.apiKeyPreview ?? resource.identifier ?? '';
       try {
         await workbench.toggleDisabled(resource, disabled);
         showNotification(
-          disabled ? t('providersPage.toast.disabled') : t('providersPage.toast.enabled'),
+          disabled
+            ? t('providersPage.toast.disabled', { name })
+            : t('providersPage.toast.enabled', { name }),
           'success'
         );
       } catch (err) {
@@ -355,24 +400,52 @@ export function ProvidersWorkbenchPage({ fixedBrand }: ProvidersWorkbenchPagePro
     [showNotification, t, workbench]
   );
 
-  const handleCreated = useCallback(() => {
-    showNotification(t('providersPage.toast.created'), 'success');
-    closeSheet();
-  }, [closeSheet, showNotification, t]);
+  const handleCreated = useCallback(
+    (name: string) => {
+      showNotification(t('providersPage.toast.created', { name }), 'success');
+      closeSheet();
+    },
+    [closeSheet, showNotification, t]
+  );
 
-  const handleUpdated = useCallback(() => {
-    showNotification(t('providersPage.toast.updated'), 'success');
-    closeSheet();
-  }, [closeSheet, showNotification, t]);
+  const handleUpdated = useCallback(
+    (name: string) => {
+      showNotification(t('providersPage.toast.updated', { name }), 'success');
+      closeSheet();
+    },
+    [closeSheet, showNotification, t]
+  );
 
-  // 加载状态
+  const handleTest = useCallback(
+    (resource: ProviderResource) => void runTest(resource, connectivityMessages),
+    [connectivityMessages, runTest]
+  );
+
+  const handleTestAll = useCallback(() => {
+    if (!activeGroup) return;
+    void runTestAll(visibleResources, connectivityMessages);
+  }, [activeGroup, connectivityMessages, runTestAll, visibleResources]);
+
+  // 加载状态:骨架与真实布局一致(页头 / 侧栏 / 行)
   if (!workbench.snapshot && workbench.isPending) {
     return (
-      <div className={styles.page}>
-        <Skeleton height={120} />
-        <div className={styles.layout}>
-          <Skeleton height={420} />
-          <Skeleton height={420} />
+      <div className={styles.page} aria-busy="true">
+        <div className={styles.skeletonHeader}>
+          <Skeleton width={220} height={28} rounded={6} />
+          <Skeleton width={320} height={14} rounded={6} />
+        </div>
+        <div className={`${styles.layout} ${fixedBrand ? styles.layoutSingle : ''}`.trim()}>
+          {!fixedBrand ? (
+            <div className={styles.skeletonRail}>
+              {Array.from({ length: 6 }, (_, index) => (
+                <Skeleton key={index} height={44} rounded={8} />
+              ))}
+            </div>
+          ) : null}
+          <div className={styles.skeletonPanel}>
+            <Skeleton width={180} height={22} rounded={6} />
+            <ProviderResourceLedgerSkeleton rows={5} />
+          </div>
         </div>
       </div>
     );
@@ -385,7 +458,6 @@ export function ProvidersWorkbenchPage({ fixedBrand }: ProvidersWorkbenchPagePro
           title={headerTitle}
           totalActive={0}
           totalResources={0}
-          providerFamilies={0}
           updatedAtLabel={updatedAtLabel}
           isFetching={workbench.isFetching}
           onRefresh={() => void handleRefresh()}
@@ -405,13 +477,15 @@ export function ProvidersWorkbenchPage({ fixedBrand }: ProvidersWorkbenchPagePro
         title={headerTitle}
         totalActive={totalActive}
         totalResources={totalResources}
-        providerFamilies={providerFamilies}
+        totalAttention={totalAttention}
         updatedAtLabel={updatedAtLabel}
         isFetching={workbench.isFetching}
         isNewDisabled={disableMutations}
         showNewAction={!fixedBrand}
         showSummary={fixedBrand !== 'apikeyFun'}
-        newLabel={t('providersPage.actions.new')}
+        newLabel={t('providersPage.actions.addNamed', {
+          provider: t(`providersPage.providerNames.${activeGroup.id}`),
+        })}
         variant={fixedBrand === 'apikeyFun' ? 'quickStart' : undefined}
         onRefresh={() => void handleRefresh()}
         onNew={openCreate}
@@ -424,6 +498,7 @@ export function ProvidersWorkbenchPage({ fixedBrand }: ProvidersWorkbenchPagePro
           <ProviderCategoryList
             groups={groups}
             activeBrand={activeGroup.id}
+            attentionBrands={attentionBrands}
             onSelect={(brand) => {
               const isSwitching = sheetState.open && sheetState.brand !== brand;
               const proceed =
@@ -444,7 +519,7 @@ export function ProvidersWorkbenchPage({ fixedBrand }: ProvidersWorkbenchPagePro
           <SponsorQuickStartPanel
             resource={quickStartResource}
             workbench={workbench}
-            mutationDisabled={disableMutations}
+            mutationDisabled={disableMutations || workbench.isFetching}
           />
         ) : (
           <ProviderResourcePanel
@@ -454,9 +529,14 @@ export function ProvidersWorkbenchPage({ fixedBrand }: ProvidersWorkbenchPagePro
             filteredResources={visibleResources}
             selectedId={sheetState.open ? (sheetState.resource?.id ?? null) : null}
             disableMutations={disableMutations}
+            isFetching={workbench.isFetching}
             usageByProvider={usageByProvider}
             toolbarControls={toolbarControls}
-            onView={openView}
+            testResults={testResults}
+            testingAll={testInFlight > 0}
+            onTest={handleTest}
+            onTestAll={handleTestAll}
+            onOpen={openView}
             onEdit={openEdit}
             onDelete={handleDelete}
             onToggleDisabled={handleToggleDisabled}
