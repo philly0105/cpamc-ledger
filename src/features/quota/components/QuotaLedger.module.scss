@@ -81,7 +81,7 @@
 
 .cells {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 170px), 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 170px), 1fr));
   gap: 10px 22px;
 }
 
@@ -176,6 +176,11 @@
   color: var(--text-tertiary);
 }
 
+.rowNotice {
+  margin-top: 6px;
+  color: var(--text-secondary);
+}
+
 .rowError {
   color: var(--danger-color);
   overflow-wrap: anywhere;
@@ -200,7 +205,9 @@
 
 .action {
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
+  gap: 4px;
 }
 
 .refresh {

@@ -5,8 +5,7 @@
  * rows reports — so the same limit lines up down the group, and an account that
  * lacks a limit shows an explicit "not reported" cell instead of shifting its
  * other windows left. Row states mirror the cards: not loaded, loading, failed,
- * loaded. Manual reset actions stay on the cards; the ledger keeps per-account
- * refresh only.
+ * loaded. Each row carries the same reset and refresh actions as its card.
  */
 
 import { useTranslation } from 'react-i18next';
@@ -20,6 +19,7 @@ import { QUOTA_TAB_ORDER } from '../constants';
 import { isQuotaRefreshDisabled, type QuotaFileEntry } from '../logic';
 import { resolveQuotaPlanLabel } from '../planLabels';
 import { QUOTA_ADAPTERS, type QuotaCardState } from '../providers';
+import { useClaudeResetGrants } from '../providers/claude/ClaudeResetGrants';
 import type { QuotaProviderType } from '../providers/types';
 import { ledgerColumns } from '../quotaPool';
 import {
@@ -44,6 +44,7 @@ export interface QuotaLedgerProps {
   canRefresh: (entry: QuotaFileEntry) => boolean;
   resettingKey: string | null;
   onRefresh: (entry: QuotaFileEntry) => void;
+  onReset: (entry: QuotaFileEntry) => void;
 }
 
 const TONE_CLASS = {
@@ -157,6 +158,7 @@ function LedgerRow({
   canRefresh,
   resetting,
   onRefresh,
+  onReset,
 }: {
   entry: QuotaFileEntry;
   quota: QuotaCardState | undefined;
@@ -166,6 +168,7 @@ function LedgerRow({
   canRefresh: boolean;
   resetting: boolean;
   onRefresh: () => void;
+  onReset: () => void;
 }) {
   const { t } = useTranslation();
   const adapter = QUOTA_ADAPTERS[entry.type];
@@ -173,6 +176,18 @@ function LedgerRow({
   const loading = status === 'loading';
   const plan = resolveQuotaPlanLabel(entry.type, quota, t);
   const own = normalizeQuotaWindows(entry.type, quota);
+  const claudeReset = useClaudeResetGrants(
+    entry.file,
+    entry.type === 'claude' && status !== 'idle',
+    !canRefresh || loading || resetting,
+    quota,
+    onRefresh
+  );
+  const showReset =
+    status === 'success' &&
+    Boolean(adapter.resetQuota) &&
+    quota !== undefined &&
+    Boolean(adapter.canResetQuota?.(quota));
 
   let body;
   if (status === 'success') {
@@ -226,14 +241,58 @@ function LedgerRow({
           {displayName}
         </span>
         {plan && <span className={styles.plan}>{plan}</span>}
+        {entry.type === 'claude' && status === 'success' && (
+          <span className={styles.plan}>
+            {t('claude_reset.remaining')}: {claudeReset.count ?? '--'}
+          </span>
+        )}
       </div>
-      <div className={styles.body}>{body}</div>
+      <div className={styles.body}>
+        {body}
+        {claudeReset.message && (
+          <p role="status" className={`${styles.rowMessage} ${styles.rowNotice}`}>
+            {t(`claude_reset.${claudeReset.message}`)}
+          </p>
+        )}
+      </div>
       <div className={styles.action}>
+        {entry.type === 'claude' && status !== 'idle' && (
+          <button
+            type="button"
+            className={styles.refresh}
+            disabled={claudeReset.blocked}
+            onClick={claudeReset.confirm}
+            title={t(`claude_reset.${claudeReset.buttonLabel}`)}
+          >
+            <IconRefreshCw
+              size={13}
+              aria-hidden="true"
+              className={claudeReset.busy ? styles.spinning : undefined}
+            />
+            <span>{t(`claude_reset.${claudeReset.buttonLabel}`)}</span>
+          </button>
+        )}
+        {showReset && (
+          <button
+            type="button"
+            className={styles.refresh}
+            onClick={onReset}
+            disabled={!canRefresh || loading || resetting}
+            title={t('codex_quota.reset_button')}
+          >
+            <IconRefreshCw
+              size={13}
+              aria-hidden="true"
+              className={resetting ? styles.spinning : undefined}
+            />
+            <span>{t('codex_quota.reset_button')}</span>
+          </button>
+        )}
         <button
           type="button"
           className={styles.refresh}
           onClick={onRefresh}
-          disabled={isQuotaRefreshDisabled(canRefresh, loading, resetting)}
+          disabled={isQuotaRefreshDisabled(canRefresh, loading, resetting || claudeReset.busy)}
           aria-label={t('quota_management.ledger_refresh_label', { name: displayName })}
           title={t('auth_files.quota_refresh_hint')}
         >
@@ -259,6 +318,7 @@ export function QuotaLedger({
   canRefresh,
   resettingKey,
   onRefresh,
+  onReset,
 }: QuotaLedgerProps) {
   const { t } = useTranslation();
   const groups = QUOTA_TAB_ORDER.map((provider) => ({
@@ -297,6 +357,7 @@ export function QuotaLedger({
                     canRefresh={canRefresh(entry)}
                     resetting={resettingKey === key}
                     onRefresh={() => onRefresh(entry)}
+                    onReset={() => onReset(entry)}
                   />
                 );
               })}
